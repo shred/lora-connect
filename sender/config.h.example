@@ -1,0 +1,42 @@
+/*
+ * LoRa-Connect
+ *
+ * Copyright (C) 2023 Richard "Shred" Körber
+ *   https://github.com/shred/lora-connect
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+// == THIS IS AN EXAMPLE CONFIGURATION FILE ==========
+//
+// Copy this file to "config.h" in the same directory,
+// then change it according to your requirements.
+//
+// ===================================================
+
+// The following constant defines the LoRa frequency that is used by the device.
+//
+// ATTENTION: Make sure YOU are using the correct value for YOUR country.
+//
+// Failing to do so may cause legal problems, damage claims, and even prison.
+// It is YOUR responsibility to set the correct value here!
+// DO NOT just use a value that you found in an example source code somewhere.
+#define LORA_BAND xxxE6
+
+// The following constant defines the LoRa sender power and boost of the device.
+//
+// ATTENTION: Make sure YOU are using the correct value for YOUR country.
+//
+// Failing to do so may cause legal problems, damage claims, and even prison.
+// It is YOUR responsibility to set the correct value here!
+// DO NOT just use a value that you found in an example source code somewhere.
+#define LORA_POWER xx
+#define LORA_PABOOST xx
