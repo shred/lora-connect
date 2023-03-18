@@ -30,6 +30,7 @@ A random collection of (more or less) related links:
 * https://techtutorialsx.com/2018/01/25/esp32-arduino-applying-the-hmac-sha-256-mechanism/
 * https://mbed-tls.readthedocs.io/en/latest/kb/how-to/encrypt-with-aes-cbc/
 * https://www.mischianti.org/2020/12/15/websocket-on-arduino-esp8266-and-esp32-server-authentication-2/
+* https://github.com/alexantoniades/encrypted-lora-gateway
 
 ## Kudos
 
