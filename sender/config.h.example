@@ -40,3 +40,15 @@
 // DO NOT just use a value that you found in an example source code somewhere.
 #define LORA_POWER xx
 #define LORA_PABOOST xx
+
+
+// Access Point Configuration
+#define AP_SSID "MyAP"
+#define AP_PASSWORD "mySeCrEtPaSsWoRd"
+#define AP_SSID_HIDDEN false
+#define AP_CHANNEL 1
+
+
+// Your Home Connect Device
+// The MAC address can be found on the label together with the model and serial number.
+#define HC_DEVICE_MAC {0x00, 0x11, 0x22, 0x33, 0x44, 0x55}

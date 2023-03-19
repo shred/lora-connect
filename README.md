@@ -20,6 +20,7 @@ However I hope that this project is a good starting point for your own experimen
 
 * The project bases on reverse engineering. There is no guarantee that it will work with your Home Connect appliance. It might also stop working some day, e.g. after a protocol change of the manufacturer.
 * LoRa uses certain radio frequencies for transmission. The permitted frequencies, maximum transmission power, package sizes, duty cycles, and other parameters differ from country to country. It is **YOUR responsibility** to properly configure the project to comply to the rules of **YOUR** country. Failing to do so may result in legal problems, high damage claims, and even prison. The author of this project cannot be held liable for damages caused by misconfiguration.
+* C isn't the language that I am most proficient with. The source code is ugly, badly formatted, and certainly with a lot of things that a good C developer would do much better. I am open for your constructive feedback. But on the other hand, it works for me, so I'm fine with it.
 
 # Hardware
 
