@@ -31,13 +31,11 @@ However I hope that this project is a good starting point for your own experimen
 
 ## Dependencies
 
-* WLAN AP: Necessary so the appliance connects to the sender device. Included in ESP32.
-* DHCP: Included in ESP32 when used as access point.
-* Web Socket Client: [Web Sockets](https://github.com/Links2004/arduinoWebSockets).
-* Encryption: HMAC, AES-CBC done via [mbed-tls](https://www.trustedfirmware.org/projects/mbed-tls/).
-* LoRa: [Heltec ESP32](https://github.com/HelTecAutomation/Heltec_ESP32), can only be used with the Heltec hardware!
-* [ArduinoJson](https://arduinojson.org/)
-* [PubSubClient](https://github.com/knolleary/pubsubclient)
+* [ArduinoJson](https://arduinojson.org/) by Benoit Blanchon (v6.21.0 or higher)
+* [Crypto](https://rweather.github.io/arduinolibs/crypto.html) by Rhys Weatherley
+* [Heltec ESP32 Dev-Boards](https://github.com/HelTecAutomation/Heltec_ESP32) by Heltec Automation (v1.1.1 or higher, can only be used with the Heltec hardware!)
+* [PubSubClient](https://github.com/knolleary/pubsubclient) by Nick O'Leary (v2.8.0 or higher)
+* [Web Sockets](https://github.com/Links2004/arduinoWebSockets) by Markus Sattler (v2.3.6 or higher)
 
 ## Further Reading
 
