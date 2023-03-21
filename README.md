@@ -32,6 +32,7 @@ However I hope that this project is a good starting point for your own experimen
 ## Dependencies
 
 * [ArduinoJson](https://arduinojson.org/) by Benoit Blanchon (v6.21.0 or higher)
+* [Base64](https://github.com/Densaugeo/base64_arduino) by Densaugeo (v1.3.0 or higher)
 * [Crypto](https://rweather.github.io/arduinolibs/crypto.html) by Rhys Weatherley
 * [Heltec ESP32 Dev-Boards](https://github.com/HelTecAutomation/Heltec_ESP32) by Heltec Automation (v1.1.1 or higher, can only be used with the Heltec hardware!)
 * [PubSubClient](https://github.com/knolleary/pubsubclient) by Nick O'Leary (v2.8.0 or higher)
@@ -57,7 +58,8 @@ You need to retrieve your appliance key. This can be done with [hcpy](https://gi
 
 ## Kudos
 
-This project would not exist without Trammell Hudson's awesome blog article about ["hacking your dishwasher"](https://trmm.net/homeconnect/) and the related [hcpy](https://github.com/osresearch/hcpy) project. Thank you, Trammell!
+* This project would not exist without Trammell Hudson's awesome blog article about ["hacking your dishwasher"](https://trmm.net/homeconnect/) and the related [hcpy](https://github.com/osresearch/hcpy) project. Thank you, Trammell!
+* The CBC implementation was copied from the [arduinolibs](https://github.com/rweather/arduinolibs) crypto legacy by Rhys Weatherley.
 
 ## Contribution
 

@@ -49,6 +49,11 @@
 #define AP_CHANNEL 1
 
 
-// Your Home Connect Device
+// Your Home Connect Appliance
 // The MAC address can be found on the label together with the model and serial number.
-#define HC_DEVICE_MAC {0x00, 0x11, 0x22, 0x33, 0x44, 0x55}
+#define HC_APPLIANCE_MAC {0x00, 0x11, 0x22, 0x33, 0x44, 0x55}
+
+// The Key and IV of the Appliance
+// It must be fetched using hcpy (https://github.com/osresearch/hcpy)
+#define HC_APPLIANCE_KEY "myApPlIaNcEkEy"
+#define HC_APPLIANCE_IV "myApPlIaNcEiV"

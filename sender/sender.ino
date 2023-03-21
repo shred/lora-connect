@@ -15,17 +15,33 @@
  * GNU General Public License for more details.
  */
 
+#define BASE64_URL  // set base64.hpp to base64url mode
+
+#include <AES.h>
+#include <base64.hpp>
 #include <heltec.h>
+#include <WebSocketsClient.h>
 #include <WiFi.h>
 
+#include "CBC.h"  // crypto legacy, local copy
+
 #include "config.h"
+
 
 // AP connection
 boolean apGate = false;
 boolean deviceConnected = false;
 uint8_t deviceAid;
 esp_ip4_addr_t deviceIp;
-uint8_t expectedMac[6] = HC_DEVICE_MAC;
+uint8_t expectedMac[6] = HC_APPLIANCE_MAC;
+
+// HC encryption
+unsigned char applianceKey[32];
+unsigned char applianceIv[16];
+CBC<AES256> cbcaes256;
+
+// Web Socket
+WebSocketsClient webSocket;
 
 void WiFiApConnected(WiFiEvent_t event, WiFiEventInfo_t info) {
   Serial.printf("Connection attempt (AID %d, MAC %02X:%02X:%02X:%02X:%02X:%02X)\n",
@@ -76,6 +92,24 @@ void setup() {
 
   Serial.begin(115200);
   Serial.println();
+  Heltec.display->clear();
+  Heltec.display->display();
+
+  if (decode_base64_length((unsigned char *) HC_APPLIANCE_KEY) != 32 || decode_base64_length((unsigned char *) HC_APPLIANCE_IV) != 16) {
+    Serial.println("Invalid length of appliance key or iv, please check your configuration!");
+    for(;;);
+  }
+  decode_base64((unsigned char *) HC_APPLIANCE_KEY, applianceKey);
+  decode_base64((unsigned char *) HC_APPLIANCE_IV, applianceIv);
+  cbcaes256.clear();
+  if (!cbcaes256.setKey(applianceKey, cbcaes256.keySize())) {
+    Serial.println("Bad appliance key, please check your configuration!");
+    for(;;);
+  }
+  if (!cbcaes256.setIV(applianceIv, cbcaes256.ivSize())) {
+    Serial.println("Bad appliance iv, please check your configuration!");
+    for(;;);
+  }
 
   LoRa.setTxPower(LORA_POWER, (LORA_PABOOST == true ? RF_PACONFIG_PASELECT_PABOOST : RF_PACONFIG_PASELECT_RFO));
 
@@ -88,5 +122,14 @@ void setup() {
 }
 
 void loop() {
-  delay(2000);
+/*
+  if (deviceConnected) {
+    char ip[20];
+    snprintf(ip, sizeof(ip), IPSTR, IP2STR(&deviceIp));
+    webSocket.begin(ip, 80, "/homeconnect");
+//    webSocket.onEvent(webSocketEvent);
+    webSocket.setReconnectInterval(5000);
+  }
+*/
+  delay(10);
 }
