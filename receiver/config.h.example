@@ -40,3 +40,37 @@
 // DO NOT just use a value that you found in an example source code somewhere.
 #define LORA_POWER xx
 #define LORA_PABOOST xx
+
+
+// ---- Local WLAN ----------------------------------------
+// This is the WLAN configuration on the receiver side, so it is the one that
+// is used for connecting into your home WLAN and to your MQTT server.
+
+// The name of your WLAN
+#define WLAN_SSID "HomeSweetHome"
+
+// Your WLAN's password
+#define WLAN_PSK "mYsEcReTpAsSwOrD"
+
+
+// ---- MQTT ----------------------------------------------
+// MQTT server host name
+#define MQTT_SERVER_HOST "mqtt.localdomain"
+
+// Port of the MQTT server, usually 1883
+#define MQTT_SERVER_PORT 1883
+
+// MQTT Client ID (just use the default if in doubt)
+#define MQTT_CLIENT_ID "lorabridge-1"
+
+// User name for MQTT server authentication, NULL if no authentication needed
+#define MQTT_USER "lorabridge"
+
+// Password for MQTT server authentication, NULL if no authentication needed
+#define MQTT_PASSWORD "mYsEcReTmQtTpAsSwOrD"
+
+// MQTT topic to be used
+#define MQTT_TOPIC "hc"
+
+// Set to true if message should be retained
+#define MQTT_RETAIN false

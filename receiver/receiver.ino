@@ -15,58 +15,106 @@
  * GNU General Public License for more details.
  */
 
+#include <ArduinoJson.h>
 #include <heltec.h>
+#include <PubSubClient.h>
+#include <WiFi.h>
+#include <WiFiClient.h>
 
 #include "config.h"
 
-String rssi = "RSSI --";
-String packSize = "--";
-String packet ;
+unsigned long beforeMqttConnection = millis();
+bool connected = false;
+WiFiClient wifiClient;
+PubSubClient client(MQTT_SERVER_HOST, MQTT_SERVER_PORT, wifiClient);
 
-void LoRaData(){
-    Heltec.display->clear();
-    Heltec.display->setTextAlignment(TEXT_ALIGN_LEFT);
-    Heltec.display->setFont(ArialMT_Plain_10);
-    Heltec.display->drawString(0 , 15 , "Received "+ packSize + " bytes");
-    Heltec.display->drawStringMaxWidth(0 , 26 , 128, packet);
-    Heltec.display->drawString(0, 0, rssi);
-    Heltec.display->display();
+inline static unsigned long timeDifference(unsigned long now, unsigned long past) {
+    // This is actually safe from millis() overflow because all types are unsigned long!
+    return past > 0 ? (now - past) : 0;
 }
 
-void cbk(int packetSize) {
-    packet = "";
-    packSize = String(packetSize,DEC);
-    for (int i = 0; i < packetSize; i++) {
-        packet += (char) LoRa.read();
-    }
-    rssi = "RSSI " + String(LoRa.packetRssi(), DEC) ;
-    LoRaData();
+void onWiFiStaIpAssigned(WiFiEvent_t event, WiFiEventInfo_t info) {
+  Serial.printf("Connected to WLAN with IP " IPSTR "\n", IP2STR(&info.got_ip.ip_info.ip));
+  connected = true;
+}
+
+void onWiFiStaDisconnected(WiFiEvent_t event, WiFiEventInfo_t info) {
+  connected = false;
+  Serial.println("WiFi connection lost. Reconnecting...");
+  WiFi.begin(WLAN_SSID, WLAN_PSK);
+}
+
+void onLoRaReceive(int packetSize) {
+  if (packetSize == 0) {
+    return;
+  }
+
+  Serial.printf("Received LoRa message, size: %d\n", packetSize);
+
+  String packet = "";
+  while (LoRa.available()) {
+    packet += (char)LoRa.read();
+  }
+
+  // TODO: Decrypt
+  // TODO: Check signature/checksum
+  // TODO: Convert binary structure into JSON
+
+  DynamicJsonDocument doc(8192);
+  String json;
+
+  doc["packet"] = packet;
+  doc["loraSignalStrength"] = LoRa.packetRssi();
+  doc["wifiSignalStrength"] = WiFi.RSSI();
+
+  serializeJson(doc, json);
+  if (!client.publish(MQTT_TOPIC, json.c_str(), MQTT_RETAIN)) {
+    Serial.print("Failed to send MQTT message, rc=");
+    Serial.println(client.state());
+  }
 }
 
 void setup() {
-    Heltec.begin(
-        true,           // display is enabled
-        true,           // LoRa is enabled
-        true,           // serial is enabled
-        LORA_PABOOST,   // set LoRa paboost
-        LORA_BAND       // set LoRa band
-    );
+  Heltec.begin(
+    true,          // display is enabled
+    true,          // LoRa is enabled
+    true,          // serial is enabled
+    LORA_PABOOST,  // set LoRa paboost
+    LORA_BAND      // set LoRa band
+  );
+  delay(1000);
 
-    Heltec.display->init();
-    Heltec.display->clear();
-    Heltec.display->drawString(0, 0, "Heltec.LoRa Initial success!");
-    Heltec.display->drawString(0, 10, "Wait for incoming data...");
-    Heltec.display->display();
+  Serial.begin(115200);
+  Serial.println();
+  Heltec.display->clear();
+  Heltec.display->display();
 
-    delay(1000);
-    LoRa.setTxPower(LORA_POWER, (LORA_PABOOST == true ? RF_PACONFIG_PASELECT_PABOOST : RF_PACONFIG_PASELECT_RFO));
-    LoRa.receive();
+  // Start LoRa
+  LoRa.setTxPower(LORA_POWER, (LORA_PABOOST == true ? RF_PACONFIG_PASELECT_PABOOST : RF_PACONFIG_PASELECT_RFO));
+  LoRa.onReceive(onLoRaReceive);
+  LoRa.receive();
+
+  // Start WLAN
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_STA);
+  WiFi.onEvent(onWiFiStaDisconnected, WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
+  WiFi.onEvent(onWiFiStaIpAssigned, WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_GOT_IP);
+  WiFi.begin(WLAN_SSID, WLAN_PSK);
 }
 
 void loop() {
-    int packetSize = LoRa.parsePacket();
-    if (packetSize) {
-        cbk(packetSize);
+  const unsigned long now = millis();
+
+  if (connected) {
+    if (!client.loop() && timeDifference(now, beforeMqttConnection) > 1000) {
+      beforeMqttConnection = now;
+      if (client.connect(MQTT_CLIENT_ID, MQTT_USER, MQTT_PASSWORD)) {
+        Serial.println("Successfully connected to MQTT server");
+      } else {
+        Serial.printf("Connection to MQTT server failed, rc=%d\n", client.state());
+      }
     }
-    delay(10);
+  }
+
+  delay(1000);
 }
