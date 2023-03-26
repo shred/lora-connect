@@ -29,8 +29,23 @@ WiFiClient wifiClient;
 PubSubClient client(MQTT_SERVER_HOST, MQTT_SERVER_PORT, wifiClient);
 
 inline static unsigned long timeDifference(unsigned long now, unsigned long past) {
-    // This is actually safe from millis() overflow because all types are unsigned long!
-    return past > 0 ? (now - past) : 0;
+  // This is actually safe from millis() overflow because all types are unsigned long!
+  return past > 0 ? (now - past) : 0;
+}
+
+static void printBytes(uint8_t *data, size_t length) {
+  for (int i = 0; i < length; i++) {
+    Serial.printf("%02X", data[i]);
+  }
+  Serial.println();
+  for (int i = 0; i < length; i++) {
+    if (data[i] >= 32 && data[i] < 128) {
+      Serial.print((char)data[i]);
+    } else {
+      Serial.print('.');
+    }
+  }
+  Serial.println();
 }
 
 void onWiFiStaIpAssigned(WiFiEvent_t event, WiFiEventInfo_t info) {
@@ -44,33 +59,49 @@ void onWiFiStaDisconnected(WiFiEvent_t event, WiFiEventInfo_t info) {
   WiFi.begin(WLAN_SSID, WLAN_PSK);
 }
 
-void onLoRaReceive(int packetSize) {
-  if (packetSize == 0) {
-    return;
+String mapKey(uint16_t key) {
+  switch (key) {
+    case 527: return F("BSH.Common.Status.DoorState");
+    case 542: return F("BSH.Common.Option.ProgramProgress");
+    case 544: return F("BSH.Common.Option.RemainingProgramTime");
+    case 552: return F("BSH.Common.Status.OperationState");
+    case 27142: return F("LaundryCare.Common.Option.ProcessPhase");
+    default: return String(key, DEC);
   }
+}
 
+void onLoRaReceive(int packetSize) {
   Serial.printf("Received LoRa message, size: %d\n", packetSize);
 
-  String packet = "";
+  uint8_t packet[512];
+  int len = 0;
   while (LoRa.available()) {
-    packet += (char)LoRa.read();
+    packet[len++] = (uint8_t)LoRa.read();
   }
+  printBytes(packet, len);
 
   // TODO: Decrypt
   // TODO: Check signature/checksum
-  // TODO: Convert binary structure into JSON
 
-  DynamicJsonDocument doc(8192);
-  String json;
+  if (packet[0] != 0) {
+    Serial.print("  Remote system message: ");
+    Serial.println(String().concat(((char *)packet) + 1, len - 1));
+  } else {
+    uint16_t data[(len - 1) / 2];
+    memcpy(data, packet + 1, len - 1);
 
-  doc["packet"] = packet;
-  doc["loraSignalStrength"] = LoRa.packetRssi();
-  doc["wifiSignalStrength"] = WiFi.RSSI();
+    DynamicJsonDocument doc(8192);
+    doc["key"] = mapKey(data[0]);
+    doc["value"] = data[1];
+    doc["loraSignalStrength"] = LoRa.packetRssi();
+    doc["wifiSignalStrength"] = WiFi.RSSI();
 
-  serializeJson(doc, json);
-  if (!client.publish(MQTT_TOPIC, json.c_str(), MQTT_RETAIN)) {
-    Serial.print("Failed to send MQTT message, rc=");
-    Serial.println(client.state());
+    String json;
+    serializeJson(doc, json);
+    if (!client.publish(MQTT_TOPIC, json.c_str(), MQTT_RETAIN)) {
+      Serial.print("Failed to send MQTT message, rc=");
+      Serial.println(client.state());
+    }
   }
 }
 
@@ -88,11 +119,6 @@ void setup() {
   Serial.println();
   Heltec.display->clear();
   Heltec.display->display();
-
-  // Start LoRa
-  LoRa.setTxPower(LORA_POWER, (LORA_PABOOST == true ? RF_PACONFIG_PASELECT_PABOOST : RF_PACONFIG_PASELECT_RFO));
-  LoRa.onReceive(onLoRaReceive);
-  LoRa.receive();
 
   // Start WLAN
   WiFi.disconnect(true);
@@ -116,5 +142,8 @@ void loop() {
     }
   }
 
-  delay(1000);
+  int packetSize = LoRa.parsePacket();
+  if (packetSize) {
+    onLoRaReceive(packetSize);
+  }
 }

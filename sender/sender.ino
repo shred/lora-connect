@@ -15,44 +15,48 @@
  * GNU General Public License for more details.
  */
 
-#define BASE64_URL  // set base64.hpp to base64url mode
-
-#include <AES.h>
-#include <base64.hpp>
 #include <heltec.h>
-#include <WebSocketsClient.h>
 #include <WiFi.h>
 
-#include "CBC.h"  // crypto legacy, local copy
-
+#include "HCSocket.h"
 #include "config.h"
 
+static void printBytes(uint8_t *data, size_t length) {
+  for (int i = 0; i < length; i++) {
+    Serial.printf("%02X", data[i]);
+  }
+  Serial.println();
+  for (int i = 0; i < length; i++) {
+    if (data[i] >= 32 && data[i] < 128) {
+      Serial.print((char)data[i]);
+    } else {
+      Serial.print('.');
+    }
+  }
+  Serial.println();
+}
 
 // AP connection
 boolean apGate = false;
 boolean deviceConnected = false;
 uint8_t deviceAid;
-esp_ip4_addr_t deviceIp;
+IPAddress deviceIp;
 uint8_t expectedMac[6] = HC_APPLIANCE_MAC;
 
-// HC encryption
-unsigned char applianceKey[32];
-unsigned char applianceIv[16];
-CBC<AES256> cbcaes256;
+void processMessage(const JsonDocument &message);
 
-// Web Socket
-WebSocketsClient webSocket;
+// Connection to appliance
+HCSocket socket = HCSocket(HC_APPLIANCE_KEY, HC_APPLIANCE_IV, processMessage);
 
 void WiFiApConnected(WiFiEvent_t event, WiFiEventInfo_t info) {
   Serial.printf("Connection attempt (AID %d, MAC %02X:%02X:%02X:%02X:%02X:%02X)\n",
-    info.wifi_ap_staconnected.aid,
-    info.wifi_ap_staconnected.mac[0],
-    info.wifi_ap_staconnected.mac[1],
-    info.wifi_ap_staconnected.mac[2],
-    info.wifi_ap_staconnected.mac[3],
-    info.wifi_ap_staconnected.mac[4],
-    info.wifi_ap_staconnected.mac[5]
-  );
+                info.wifi_ap_staconnected.aid,
+                info.wifi_ap_staconnected.mac[0],
+                info.wifi_ap_staconnected.mac[1],
+                info.wifi_ap_staconnected.mac[2],
+                info.wifi_ap_staconnected.mac[3],
+                info.wifi_ap_staconnected.mac[4],
+                info.wifi_ap_staconnected.mac[5]);
   if (0 == memcmp(info.wifi_ap_staconnected.mac, expectedMac, sizeof(expectedMac))) {
     deviceConnected = false;
     deviceAid = info.wifi_ap_staconnected.aid;
@@ -64,12 +68,81 @@ void WiFiApConnected(WiFiEvent_t event, WiFiEventInfo_t info) {
   }
 }
 
+void sendLoRaPacket(uint8_t type, char *msg) {
+  sendLoRaPacket(type, msg, strlen(msg));
+}
+
+void sendLoRaPacket(uint8_t type, void *msg, size_t length) {
+  Serial.printf("LORA: Sending package type %u, length %u\n", type, length);
+  printBytes((uint8_t *)msg, length);
+
+  // TODO: encrypt, hash, secure
+  LoRa.beginPacket();
+  LoRa.setTxPower(LORA_POWER, (LORA_PABOOST == true ? RF_PACONFIG_PASELECT_PABOOST : RF_PACONFIG_PASELECT_RFO));
+  LoRa.write(type);
+  LoRa.write((uint8_t *)msg, length);
+  LoRa.endPacket();
+}
+
+void processMessage(const JsonDocument &msg) {
+  Serial.println("Received an event");
+  serializeJson(msg, Serial);
+  Serial.println();
+
+  if (msg["action"] == "NOTIFY" && msg["resource"] == "/ro/values") {
+    JsonArrayConst array = msg["data"];
+    size_t outputSize = array.size();
+    if (outputSize > 8) {
+      Serial.println("Too many data, need to split it (TODO)");
+      outputSize = 8;
+    }
+
+    Serial.printf("Output size: %u\n", outputSize);
+
+    int16_t outputBuffer[outputSize * 2];
+    for (int ix = 0; ix < outputSize; ix++) {
+      JsonObjectConst row = array[ix].as<JsonObjectConst>();
+      outputBuffer[ix * 2] = (int16_t)row["uid"];
+      outputBuffer[ix * 2 + 1] = (int16_t)row["value"];
+    }
+
+    sendLoRaPacket(0, outputBuffer, sizeof(outputBuffer));
+  } else if (msg["action"] == "POST" && msg["resource"] == "/ei/initialValues") {
+    socket.startSession(msg["sID"], msg["data"][0]["edMsgID"]);
+
+    // Send reply to /ei/initialValues
+    StaticJsonDocument<200> response;
+    response["deviceType"] = "Application";
+    response["deviceName"] = "hcpy";
+    response["deviceID"] = "0badcafe";
+    socket.sendReply(msg, response);
+
+    // ask the device which services it supports
+    socket.sendAction("/ci/services");
+
+    // send authentication
+    StaticJsonDocument<200> nonce;
+    nonce["nonce"] = socket.createRandomNonce();
+    socket.sendActionWithData("/ci/authentication", nonce, 2);
+  } else if (msg["action"] == "RESPONSE" && msg["resource"] == "/ci/authentication") {
+    socket.sendAction("/ci/info", 2);
+  } else if (msg["action"] == "RESPONSE" && msg["resource"] == "/ci/info") {
+    socket.sendAction("/ni/info");
+  } else if (msg["action"] == "RESPONSE" && msg["resource"] == "/ni/info") {
+    socket.sendAction("/ei/deviceReady", 2, "NOTIFY");
+    // socket.sendAction("/ro/allDescriptionChanges");
+    // socket.sendAction("/ro/allMandatoryValues");
+  }
+}
+
 void WiFiApIpAssigned(WiFiEvent_t event, WiFiEventInfo_t info) {
   if (apGate) {
-    deviceIp = info.wifi_ap_staipassigned.ip;
+    deviceIp = IPAddress(info.wifi_ap_staipassigned.ip.addr);
     deviceConnected = true;
     apGate = false;
-    Serial.printf("Assigned IP " IPSTR " to AID %d\n", IP2STR(&deviceIp), deviceAid);
+    Serial.printf("Assigned IP %s to AID %d\n", deviceIp.toString(), deviceAid);
+    socket.connect(deviceIp, 80);
+    sendLoRaPacket(254, "Washer connected");
   }
 }
 
@@ -78,6 +151,7 @@ void WiFiApDisconnected(WiFiEvent_t event, WiFiEventInfo_t info) {
     deviceConnected = false;
     apGate = false;
     Serial.printf("Appliance disconnected, AID %d\n", deviceAid);
+    sendLoRaPacket(255, "Washer disconnected");
   }
 }
 
@@ -95,23 +169,7 @@ void setup() {
   Heltec.display->clear();
   Heltec.display->display();
 
-  if (decode_base64_length((unsigned char *) HC_APPLIANCE_KEY) != 32 || decode_base64_length((unsigned char *) HC_APPLIANCE_IV) != 16) {
-    Serial.println("Invalid length of appliance key or iv, please check your configuration!");
-    for(;;);
-  }
-  decode_base64((unsigned char *) HC_APPLIANCE_KEY, applianceKey);
-  decode_base64((unsigned char *) HC_APPLIANCE_IV, applianceIv);
-  cbcaes256.clear();
-  if (!cbcaes256.setKey(applianceKey, cbcaes256.keySize())) {
-    Serial.println("Bad appliance key, please check your configuration!");
-    for(;;);
-  }
-  if (!cbcaes256.setIV(applianceIv, cbcaes256.ivSize())) {
-    Serial.println("Bad appliance iv, please check your configuration!");
-    for(;;);
-  }
-
-  LoRa.setTxPower(LORA_POWER, (LORA_PABOOST == true ? RF_PACONFIG_PASELECT_PABOOST : RF_PACONFIG_PASELECT_RFO));
+  randomSeed(analogRead(0));
 
   Serial.println("Starting Access Point");
   WiFi.disconnect(true);
@@ -119,17 +177,10 @@ void setup() {
   WiFi.onEvent(WiFiApConnected, WiFiEvent_t::ARDUINO_EVENT_WIFI_AP_STACONNECTED);
   WiFi.onEvent(WiFiApDisconnected, WiFiEvent_t::ARDUINO_EVENT_WIFI_AP_STADISCONNECTED);
   WiFi.onEvent(WiFiApIpAssigned, WiFiEvent_t::ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED);
+
+  sendLoRaPacket(253, "Reboot");
 }
 
 void loop() {
-/*
-  if (deviceConnected) {
-    char ip[20];
-    snprintf(ip, sizeof(ip), IPSTR, IP2STR(&deviceIp));
-    webSocket.begin(ip, 80, "/homeconnect");
-//    webSocket.onEvent(webSocketEvent);
-    webSocket.setReconnectInterval(5000);
-  }
-*/
-  delay(10);
+  socket.loop();
 }

@@ -22,38 +22,41 @@
 //
 // ===================================================
 
-// The following constant defines the LoRa frequency that is used by the device.
+//--- LORA SENDER ------------------------------------
 //
-// ATTENTION: Make sure YOU are using the correct value for YOUR country.
+// ATTENTION: Make sure YOU are using the correct values for YOUR country.
 //
-// Failing to do so may cause legal problems, damage claims, and even prison.
-// It is YOUR responsibility to set the correct value here!
-// DO NOT just use a value that you found in an example source code somewhere.
+// Failure to do so may result in legal problems, claims for damages, and even
+// imprisonment. It is YOUR sole responsibility to set the correct value here!
+// DO NOT just use values that you have found somewhere on the internet.
+
+// This is the LoRa frequency
 #define LORA_BAND xxxE6
 
 // The following constant defines the LoRa sender power and boost of the device.
-//
-// ATTENTION: Make sure YOU are using the correct value for YOUR country.
-//
-// Failing to do so may cause legal problems, damage claims, and even prison.
-// It is YOUR responsibility to set the correct value here!
-// DO NOT just use a value that you found in an example source code somewhere.
 #define LORA_POWER xx
 #define LORA_PABOOST xx
 
 
-// Access Point Configuration
+//--- ACCESS POINT -----------------------------------
+//
+// The sender spawns an WLAN AP that your appliance connects to.
+
 #define AP_SSID "MyAP"
 #define AP_PASSWORD "mySeCrEtPaSsWoRd"
 #define AP_SSID_HIDDEN false
+
+// Only use a WLAN channel that are permitted in your country!
 #define AP_CHANNEL 1
 
 
-// Your Home Connect Appliance
-// The MAC address can be found on the label together with the model and serial number.
+//--- HOME CONNECT APPLIANCE -------------------------
+//
+// The MAC address can be found on a label on the appliance,
+// together with the model and serial number.
+// Example: 00:11:22:33:44:55
 #define HC_APPLIANCE_MAC {0x00, 0x11, 0x22, 0x33, 0x44, 0x55}
 
-// The Key and IV of the Appliance
-// It must be fetched using hcpy (https://github.com/osresearch/hcpy)
+// The Key and IV of the appliance, see hcpy's config.json
 #define HC_APPLIANCE_KEY "myApPlIaNcEkEy"
 #define HC_APPLIANCE_IV "myApPlIaNcEiV"
