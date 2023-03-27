@@ -1,5 +1,7 @@
 # LoRa-Connect
 
+<img src="img/sender.jpg" style="float:right;margin:4pt" width="320px" alt="Sender Module" />
+
 This project connects your _Home Connect_ device to your home automation via MQTT using LoRa.
 
 > **WARNING**: This project is not for the faint-hearted. You **will** need developer skills and at least one hour of your time only to get the configuration straight. You also need to know how to use the Arduino IDE to program the microcontrollers. I cannot help you if this project would solve your problem, but your knowledge is not sufficient to set it up.
