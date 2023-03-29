@@ -22,6 +22,7 @@
 #include <WiFiClient.h>
 
 #include "config.h"
+#include "mapping.h"
 
 unsigned long beforeMqttConnection = millis();
 bool connected = false;
@@ -59,17 +60,6 @@ void onWiFiStaDisconnected(WiFiEvent_t event, WiFiEventInfo_t info) {
   WiFi.begin(WLAN_SSID, WLAN_PSK);
 }
 
-String mapKey(uint16_t key) {
-  switch (key) {
-    case 527: return F("BSH.Common.Status.DoorState");
-    case 542: return F("BSH.Common.Option.ProgramProgress");
-    case 544: return F("BSH.Common.Option.RemainingProgramTime");
-    case 552: return F("BSH.Common.Status.OperationState");
-    case 27142: return F("LaundryCare.Common.Option.ProcessPhase");
-    default: return String(key, DEC);
-  }
-}
-
 void onLoRaReceive(int packetSize) {
   Serial.printf("Received LoRa message, size: %d\n", packetSize);
 
@@ -92,7 +82,7 @@ void onLoRaReceive(int packetSize) {
 
     DynamicJsonDocument doc(8192);
     doc["key"] = mapKey(data[0]);
-    doc["value"] = data[1];
+    mapIntValue(data[0], data[1], doc);
     doc["loraSignalStrength"] = LoRa.packetRssi();
     doc["wifiSignalStrength"] = WiFi.RSSI();
 
