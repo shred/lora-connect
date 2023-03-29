@@ -119,6 +119,7 @@ private:
   WebSocketsClient webSocket;
 
   uint8_t fragment[32768];
+  uint8_t cryptBuffer[32768];
   uint16_t fragmentIx;
   bool isBinFragment;
 

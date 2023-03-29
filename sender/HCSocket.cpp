@@ -120,15 +120,19 @@ void HCSocket::send(const JsonDocument &doc) {
     Serial.println();
   #endif
 
-  size_t docSize = measureJson(doc);
-  uint8_t clearMsg[docSize + 64];
-  size_t docLen = serializeJson(doc, (char *)clearMsg, docSize);
+  size_t estimatedDocSize = measureJson(doc);
+  uint8_t clearMsg[estimatedDocSize + 64];
+  size_t docLen = serializeJson(doc, (char *)clearMsg, estimatedDocSize);
 
   size_t padLen = 16 - (docLen % 16);
   if (padLen == 1) {
     padLen += 16;
   }
   size_t messageLen = docLen + padLen;
+  if (messageLen > sizeof(cryptBuffer) - sizeof(lastTxHmac)) {
+    Serial.printf("TX: Message is too big (%u bytes)", messageLen);
+    return;
+  }
 
   clearMsg[docLen] = 0;
   for (int ix = docLen + 1; ix < messageLen - 1; ix++) {
@@ -136,22 +140,22 @@ void HCSocket::send(const JsonDocument &doc) {
   }
   clearMsg[messageLen - 1] = padLen;
 
-  uint8_t encryptedMsg[messageLen + sizeof(lastTxHmac)];
-  aesEncrypt.encrypt(encryptedMsg, clearMsg, messageLen);
+  aesEncrypt.encrypt(cryptBuffer, clearMsg, messageLen);
 
   hmacSha256.resetHMAC(mackey, sizeof(mackey));
   hmacSha256.update(iv, sizeof(iv));
   hmacSha256.update("E", 1);  // direction
   hmacSha256.update(lastTxHmac, sizeof(lastTxHmac));
-  hmacSha256.update(encryptedMsg, messageLen);
+  hmacSha256.update(cryptBuffer, messageLen);
   hmacSha256.finalizeHMAC(mackey, sizeof(mackey), lastTxHmac, sizeof(lastTxHmac));
-  memcpy(encryptedMsg + messageLen, lastTxHmac, sizeof(lastTxHmac));
+  memcpy(cryptBuffer + messageLen, lastTxHmac, sizeof(lastTxHmac));
 
+  size_t encryptedSize = messageLen + sizeof(lastTxHmac);
   #ifdef SOCKET_DEBUG
     Serial.println(F("TX: Encrypted"));
-    printBytes(encryptedMsg, sizeof(encryptedMsg));
+    printBytes(cryptBuffer, encryptedSize);
   #endif
-  webSocket.sendBIN(encryptedMsg, sizeof(encryptedMsg));
+  webSocket.sendBIN(cryptBuffer, encryptedSize);
 }
 
 void HCSocket::receive(uint8_t *msg, size_t size) {
@@ -189,11 +193,17 @@ void HCSocket::receive(uint8_t *msg, size_t size) {
 
   memcpy(lastRxHmac, ourMac, sizeof(lastRxHmac));
 
-  uint8_t decryptedMsg[size - 16];
-  aesDecrypt.decrypt(decryptedMsg, msg, sizeof(decryptedMsg));
+  size_t decryptedSize = size - 16;
+  if (decryptedSize > sizeof(cryptBuffer)) {
+    Serial.printf("RX: Message is too big (%u bytes)", decryptedSize);
+    reconnect();
+    return;
+  }
 
-  uint8_t padLen = decryptedMsg[sizeof(decryptedMsg) - 1];
-  if (padLen > sizeof(decryptedMsg)) {
+  aesDecrypt.decrypt(cryptBuffer, msg, decryptedSize);
+
+  uint8_t padLen = cryptBuffer[decryptedSize - 1];
+  if (padLen > decryptedSize) {
     Serial.println("RX: Padding error");
     reconnect();
     return;
@@ -201,12 +211,12 @@ void HCSocket::receive(uint8_t *msg, size_t size) {
 
   #ifdef SOCKET_DEBUG
     Serial.println("RX: Raw message");
-    printBytes(decryptedMsg, sizeof(decryptedMsg));
+    printBytes(cryptBuffer, decryptedSize);
   #endif
 
-  DynamicJsonDocument doc(sizeof(decryptedMsg) * 4);  // Better be generous
+  DynamicJsonDocument doc(decryptedSize * 4);  // Better be generous
 
-  DeserializationError error = deserializeJson(doc, (const char *)&decryptedMsg, sizeof(decryptedMsg) - padLen);
+  DeserializationError error = deserializeJson(doc, (char *)&cryptBuffer, decryptedSize - padLen);
   if (error) {
     Serial.printf("RX: JSON error %s\n", error.f_str());
     return;
