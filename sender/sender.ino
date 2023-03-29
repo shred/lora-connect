@@ -37,8 +37,8 @@ static void printBytes(uint8_t *data, size_t length) {
 }
 
 // AP connection
-boolean apGate = false;
-boolean deviceConnected = false;
+bool apGate = false;
+bool deviceConnected = false;
 uint8_t deviceAid;
 IPAddress deviceIp;
 uint8_t expectedMac[6] = HC_APPLIANCE_MAC;
@@ -49,7 +49,7 @@ void processMessage(const JsonDocument &message);
 HCSocket socket = HCSocket(HC_APPLIANCE_KEY, HC_APPLIANCE_IV, processMessage);
 
 void WiFiApConnected(WiFiEvent_t event, WiFiEventInfo_t info) {
-  Serial.printf("Connection attempt (AID %d, MAC %02X:%02X:%02X:%02X:%02X:%02X)\n",
+  Serial.printf("Connection attempt (AID %u, MAC %02X:%02X:%02X:%02X:%02X:%02X)\n",
                 info.wifi_ap_staconnected.aid,
                 info.wifi_ap_staconnected.mac[0],
                 info.wifi_ap_staconnected.mac[1],
@@ -140,7 +140,7 @@ void WiFiApIpAssigned(WiFiEvent_t event, WiFiEventInfo_t info) {
     deviceIp = IPAddress(info.wifi_ap_staipassigned.ip.addr);
     deviceConnected = true;
     apGate = false;
-    Serial.printf("Assigned IP %s to AID %d\n", deviceIp.toString(), deviceAid);
+    Serial.printf("Assigned IP %s to AID %u\n", deviceIp.toString(), deviceAid);
     socket.connect(deviceIp, 80);
     sendLoRaPacket(254, "Washer connected");
   }
@@ -150,7 +150,7 @@ void WiFiApDisconnected(WiFiEvent_t event, WiFiEventInfo_t info) {
   if (deviceConnected && deviceAid == info.wifi_ap_stadisconnected.aid) {
     deviceConnected = false;
     apGate = false;
-    Serial.printf("Appliance disconnected, AID %d\n", deviceAid);
+    Serial.printf("Appliance disconnected, AID %u\n", deviceAid);
     sendLoRaPacket(255, "Washer disconnected");
   }
 }

@@ -17,6 +17,8 @@
 
 #define BASE64_URL  // set base64.hpp to base64url mode
 
+#define SOCKET_DEBUG
+
 #include <AES.h>
 #include <ArduinoJson.h>
 #include <base64.hpp>
@@ -41,80 +43,6 @@ static void printBytes(uint8_t *data, size_t length) {
   Serial.println();
 }
 
-void HCSocket::onWsEvent(WStype_t type, uint8_t *payload, size_t length) {
-  switch (type) {
-    case WStype_DISCONNECTED:
-      Serial.println(F("WS disconnected"));
-      break;
-
-    case WStype_CONNECTED:
-      Serial.println(F("WS connected"));
-      reset();
-      break;
-
-    case WStype_TEXT:
-      Serial.printf("WS unexpected text: %s\n", payload);
-      break;
-
-    case WStype_BIN:
-      Serial.printf("WS received message with %d bytes\n", length);
-      receive(payload, length);
-      break;
-
-    case WStype_FRAGMENT_TEXT_START:
-      Serial.printf("WS unexpected text fragment start, length %d bytes\n", length);
-      break;
-
-    case WStype_FRAGMENT_BIN_START:
-      Serial.printf("WS Bin fragment start, length %d bytes\n", length);
-      if (length < sizeof(fragment)) {
-        memcpy(fragment, payload, length);
-        fragmentIx = length;
-      } else {
-        fragmentIx = 0;
-        Serial.printf("WS Fragment buffer overflow!");
-      }
-      break;
-
-    case WStype_FRAGMENT:
-      // TODO: Make sure its a bin fragment
-      Serial.printf("WS fragment, length %d bytes\n", length);
-      if (fragmentIx + length < sizeof(fragment)) {
-        memcpy(fragment + fragmentIx, payload, length);
-        fragmentIx += length;
-      } else {
-        Serial.printf("WS Fragment buffer overflow!");
-      }
-      break;
-
-    case WStype_FRAGMENT_FIN:
-      // TODO: Make sure its a bin fragment
-      Serial.printf("WS fragment fin, length %d bytes\n", length);
-      if (fragmentIx + length < sizeof(fragment)) {
-        memcpy(fragment + fragmentIx, payload, length);
-        fragmentIx += length;
-      } else {
-        Serial.printf("WS Fragment buffer overflow!");
-      }
-      if (fragmentIx > 0) {
-        receive(fragment, fragmentIx);
-        fragmentIx = 0;
-      }
-      break;
-
-    case WStype_ERROR:
-      Serial.printf("WS error %u\n", length);
-      break;
-
-    case WStype_PING:
-      Serial.println(F("WS ping"));
-      break;
-
-    case WStype_PONG:
-      Serial.println(F("WS pong"));
-      break;
-  }
-}
 
 HCSocket::HCSocket(const char *base64psk, const char *base64iv, MessageEvent listener) {
   eventListener = listener;
@@ -138,26 +66,11 @@ HCSocket::HCSocket(const char *base64psk, const char *base64iv, MessageEvent lis
   hmacSha256.finalizeHMAC(psk, sizeof(psk), mackey, sizeof(mackey));
 }
 
-void HCSocket::connect(IPAddress ip, uint16_t port) {
-  this->ip = ip;
-  this->port = port;
-
-  reset();
-
-  Serial.printf("Connecting to %s port %d\n", ip.toString(), port);
-  webSocket.begin(ip, port, "/homeconnect", "");
-  webSocket.onEvent(std::bind(&HCSocket::onWsEvent, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
-  webSocket.setReconnectInterval(5000);
-  Serial.printf("Started, waiting for events: %d\n", webSocket.isConnected());
-}
-
 void HCSocket::loop() {
   webSocket.loop();
 }
 
 void HCSocket::reset() {
-  Serial.println("WS reset");
-
   sessionId = 0;
   txMsgId = 0;
   fragmentIx = 0;
@@ -182,6 +95,18 @@ void HCSocket::reset() {
   }
 }
 
+void HCSocket::connect(IPAddress &ip, uint16_t port) {
+  this->ip = ip;
+  this->port = port;
+
+  reset();
+
+  Serial.printf("Connecting to %s port %u\n", ip.toString(), port);
+  webSocket.begin(ip, port, "/homeconnect", "");
+  webSocket.onEvent(std::bind(&HCSocket::onWsEvent, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+  webSocket.setReconnectInterval(5000);
+}
+
 void HCSocket::reconnect() {
   webSocket.disconnect();
   reset();
@@ -189,31 +114,27 @@ void HCSocket::reconnect() {
 }
 
 void HCSocket::send(const JsonDocument &doc) {
-  Serial.print("Sending: ");
-  serializeJson(doc, Serial);
-  Serial.println();
+  #ifdef SOCKET_DEBUG
+    Serial.print("TX: ");
+    serializeJson(doc, Serial);
+    Serial.println();
+  #endif
 
   size_t docSize = measureJson(doc);
   uint8_t clearMsg[docSize + 64];
   size_t docLen = serializeJson(doc, (char *)clearMsg, docSize);
-  //  Serial.printf("Actual = %d\n", docLen);
 
   size_t padLen = 16 - (docLen % 16);
   if (padLen == 1) {
     padLen += 16;
   }
-  //  Serial.printf("PadLen = %d\n", padLen);
   size_t messageLen = docLen + padLen;
-  //  Serial.printf("Real Length = %d\n", messageLen);
 
   clearMsg[docLen] = 0;
   for (int ix = docLen + 1; ix < messageLen - 1; ix++) {
     clearMsg[ix] = random(256);
   }
   clearMsg[messageLen - 1] = padLen;
-
-  //  Serial.println("Unencrypted");
-  //  printBytes(clearMsg, messageLen);
 
   uint8_t encryptedMsg[messageLen + sizeof(lastTxHmac)];
   aesEncrypt.encrypt(encryptedMsg, clearMsg, messageLen);
@@ -226,25 +147,24 @@ void HCSocket::send(const JsonDocument &doc) {
   hmacSha256.finalizeHMAC(mackey, sizeof(mackey), lastTxHmac, sizeof(lastTxHmac));
   memcpy(encryptedMsg + messageLen, lastTxHmac, sizeof(lastTxHmac));
 
-  //  Serial.println(F("HMAC"));
-  //  printBytes(lastTxHmac, sizeof(lastTxHmac));
-
-  //  Serial.println(F("Encrypted"));
-  //  printBytes(encryptedMsg, sizeof(encryptedMsg));
+  #ifdef SOCKET_DEBUG
+    Serial.println(F("TX: Encrypted"));
+    printBytes(encryptedMsg, sizeof(encryptedMsg));
+  #endif
   webSocket.sendBIN(encryptedMsg, sizeof(encryptedMsg));
 }
 
-JsonDocument *HCSocket::receive(uint8_t *msg, size_t size) {
+void HCSocket::receive(uint8_t *msg, size_t size) {
   if (size < 32 || size % 16 != 0) {
-    Serial.printf("Received strange message with size %d\n", size);
+    Serial.printf("RX: Incomplete message, length %u\n", size);
     reconnect();
-    return NULL;  // Short or unaligned message
+    return;
   }
 
-  Serial.println("Received Encrypted");
-  printBytes(msg, size);
-
-  //  Serial.printf("WS received message, size %d\n", size);
+  #ifdef SOCKET_DEBUG
+    Serial.println("RX: Encrypted");
+    printBytes(msg, size);
+  #endif
 
   uint8_t ourMac[sizeof(lastRxHmac)];
   hmacSha256.resetHMAC(mackey, sizeof(mackey));
@@ -254,15 +174,17 @@ JsonDocument *HCSocket::receive(uint8_t *msg, size_t size) {
   hmacSha256.update(msg, size - 16);
   hmacSha256.finalizeHMAC(mackey, sizeof(mackey), ourMac, sizeof(ourMac));
 
-  Serial.println("Our MAC");
-  printBytes(ourMac, sizeof(ourMac));
-  Serial.println("Their MAC");
-  printBytes(msg + size - 16, sizeof(ourMac));
+  #ifdef SOCKET_DEBUG
+    Serial.println("RX: Our MAC");
+    printBytes(ourMac, sizeof(ourMac));
+    Serial.println("RX: Their MAC");
+    printBytes(msg + size - 16, sizeof(ourMac));
+  #endif
 
   if (0 != memcmp(msg + size - 16, ourMac, sizeof(ourMac))) {
-    Serial.println("Bad HMAC");
-    //    reconnect();
-    //    return NULL;
+    Serial.println("RX: Bad HMAC, a message was lost");
+    reconnect();
+    return;
   }
 
   memcpy(lastRxHmac, ourMac, sizeof(lastRxHmac));
@@ -270,43 +192,48 @@ JsonDocument *HCSocket::receive(uint8_t *msg, size_t size) {
   uint8_t decryptedMsg[size - 16];
   aesDecrypt.decrypt(decryptedMsg, msg, sizeof(decryptedMsg));
 
-  Serial.println("Decrypted");
-  printBytes(decryptedMsg, sizeof(decryptedMsg));
-
   uint8_t padLen = decryptedMsg[sizeof(decryptedMsg) - 1];
   if (padLen > sizeof(decryptedMsg)) {
-    Serial.println("Padding error");
+    Serial.println("RX: Padding error");
     reconnect();
-    return NULL;
+    return;
   }
+
+  #ifdef SOCKET_DEBUG
+    Serial.println("RX: Raw message");
+    printBytes(decryptedMsg, sizeof(decryptedMsg));
+  #endif
 
   DynamicJsonDocument doc(sizeof(decryptedMsg) * 4);  // Better be generous
 
   DeserializationError error = deserializeJson(doc, (const char *)&decryptedMsg, sizeof(decryptedMsg) - padLen);
   if (error) {
-    Serial.print(F("deserializeJson() failed: "));
-    Serial.println(error.f_str());
-    //    reconnect();
-    return NULL;
+    Serial.printf("RX: JSON error %s\n", error.f_str());
+    return;
   }
 
-  Serial.println("Received event:");
-  serializeJson(doc, Serial);
-  Serial.println();
+  #ifdef SOCKET_DEBUG
+    Serial.println("RX:");
+    serializeJson(doc, Serial);
+    Serial.println();
+  #endif
 
   eventListener(doc);
-
-  return &doc;
 }
 
 void HCSocket::startSession(uint32_t sessionId, uint32_t txMsgId) {
-  Serial.printf("Starting session, sID=%d, msgID=%d\n", sessionId, txMsgId);
+  #ifdef SOCKET_DEBUG
+    Serial.printf("Starting session, sID=%u, msgID=%u\n", sessionId, txMsgId);
+  #endif
   this->sessionId = sessionId;
   this->txMsgId = txMsgId;
 }
 
 void HCSocket::sendActionWithData(const char *resource, const JsonDocument &data, const uint16_t version, const char *action) {
-  Serial.printf("Sending action %s to resource %s\n", action, resource);
+  #ifdef SOCKET_DEBUG
+    Serial.printf("Sending action %s to resource %s\n", action, resource);
+  #endif
+
   DynamicJsonDocument doc(1024);
   doc["sID"] = sessionId;
   doc["msgID"] = txMsgId;
@@ -314,10 +241,10 @@ void HCSocket::sendActionWithData(const char *resource, const JsonDocument &data
   doc["version"] = version;
   doc["action"] = action;
   if (!data.isNull()) {
-    JsonArray array = doc.createNestedArray("data");
-    array.add(data);  // stores by copy
+    doc.createNestedArray("data").add(data);  // stores by copy
   }
   send(doc);
+
   txMsgId++;
 }
 
@@ -327,7 +254,10 @@ void HCSocket::sendAction(const char *resource, const uint16_t version, const ch
 }
 
 void HCSocket::sendReply(const JsonDocument &query, const JsonDocument &reply) {
-  Serial.printf("Sending reply to query msgId=%d\n", query["msgID"]);
+  #ifdef SOCKET_DEBUG
+    Serial.printf("Sending reply to query msgId=%u\n", query["msgID"]);
+  #endif
+
   DynamicJsonDocument doc(1024);
   doc["sID"] = query["sID"];
   doc["msgID"] = query["msgID"];
@@ -335,8 +265,7 @@ void HCSocket::sendReply(const JsonDocument &query, const JsonDocument &reply) {
   doc["version"] = query["version"];
   doc["action"] = "RESPONSE";
   if (!reply.isNull()) {
-    JsonArray array = doc.createNestedArray("data");
-    array.add(reply);  // stores by copy
+    doc.createNestedArray("data").add(reply);  // stores by copy
   }
   send(doc);
 }
@@ -348,11 +277,84 @@ String HCSocket::createRandomNonce() {
   }
 
   uint8_t encodedToken[48];
-  unsigned int len = encode_base64(tokenBin, sizeof(tokenBin), encodedToken);
+  size_t len = encode_base64(tokenBin, sizeof(tokenBin), encodedToken);
   while (len > 0 && encodedToken[len - 1] == '=') {
     encodedToken[len - 1] = 0;
     len--;
   }
 
   return String((char *)&encodedToken);
+}
+
+void HCSocket::onWsEvent(WStype_t type, uint8_t *payload, size_t length) {
+  switch (type) {
+    case WStype_DISCONNECTED:
+      Serial.println(F("WS disconnected"));
+      break;
+
+    case WStype_CONNECTED:
+      Serial.println(F("WS connected"));
+      reset();
+      break;
+
+    case WStype_TEXT:
+      Serial.printf("WS unexpected text: %s\n", payload);
+      break;
+
+    case WStype_BIN:
+      Serial.printf("WS received message with %u bytes\n", length);
+      receive(payload, length);
+      break;
+
+    case WStype_FRAGMENT_TEXT_START:
+      Serial.printf("WS unexpected text fragment start, length %u bytes\n", length);
+      isBinFragment = false;
+      break;
+
+    case WStype_FRAGMENT_BIN_START:
+      Serial.printf("WS Bin fragment start, length %u bytes\n", length);
+      fragmentIx = 0;
+      isBinFragment = true;
+      appendFragment(payload, length);
+      break;
+
+    case WStype_FRAGMENT:
+      Serial.printf("WS fragment, length %u bytes\n", length);
+      appendFragment(payload, length);
+      break;
+
+    case WStype_FRAGMENT_FIN:
+      Serial.printf("WS fragment fin, length %u bytes\n", length);
+      appendFragment(payload, length);
+      if (isBinFragment && fragmentIx > 0) {
+        receive(fragment, fragmentIx);
+        fragmentIx = 0;
+        isBinFragment = false;
+      }
+      break;
+
+    case WStype_ERROR:
+      Serial.printf("WS error %u\n", length);
+      break;
+
+    case WStype_PING:
+      Serial.println(F("WS ping"));
+      break;
+
+    case WStype_PONG:
+      Serial.println(F("WS pong"));
+      break;
+  }
+}
+
+void HCSocket::appendFragment(uint8_t *payload, size_t length) {
+  if (!isBinFragment) {
+    return;
+  }
+  if (fragmentIx + length < sizeof(fragment)) {
+    memcpy(fragment + fragmentIx, payload, length);
+    fragmentIx += length;
+  } else {
+    Serial.println(F("WS fragment buffer overflow!"));
+  }
 }

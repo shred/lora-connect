@@ -41,7 +41,7 @@ public:
   /**
    * Open a connection to the appliance.
    */
-  void connect(IPAddress ip, uint16_t port);
+  void connect(IPAddress &ip, uint16_t port);
 
   /**
    * Close the connection, then reconnect. This is useful to bring the socket
@@ -63,7 +63,7 @@ public:
   /**
    * Decrypt and parse a received message from the appliance.
    */
-  JsonDocument *receive(uint8_t *msg, size_t size);
+  void receive(uint8_t *msg, size_t size);
 
   /**
    * Start a session after establishing a connection.
@@ -120,7 +120,9 @@ private:
 
   uint8_t fragment[32768];
   uint16_t fragmentIx;
+  bool isBinFragment;
 
+  void appendFragment(uint8_t *payload, size_t length);
   void onWsEvent(WStype_t type, uint8_t *payload, size_t length);
 };
 
