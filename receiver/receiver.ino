@@ -21,12 +21,15 @@
 #include <WiFi.h>
 #include <WiFiClient.h>
 
+#include "LoRaReceiver.h"
+
 #include "config.h"
 #include "mapping.h"
 
 unsigned long beforeMqttConnection = millis();
 bool connected = false;
 WiFiClient wifiClient;
+LoRaReceiver lora;
 PubSubClient client(MQTT_SERVER_HOST, MQTT_SERVER_PORT, wifiClient);
 
 inline static unsigned long timeDifference(unsigned long now, unsigned long past) {
@@ -34,19 +37,39 @@ inline static unsigned long timeDifference(unsigned long now, unsigned long past
   return past > 0 ? (now - past) : 0;
 }
 
-static void printBytes(uint8_t *data, size_t length) {
-  for (int i = 0; i < length; i++) {
-    Serial.printf("%02X", data[i]);
-  }
-  Serial.println();
-  for (int i = 0; i < length; i++) {
-    if (data[i] >= 32 && data[i] < 128) {
-      Serial.print((char)data[i]);
-    } else {
-      Serial.print('.');
-    }
-  }
-  Serial.println();
+void onReceiveInt(uint16_t key, int32_t value) {
+  Serial.printf("LR: RECEIVED int  %u = %d\n", key, value);
+
+  DynamicJsonDocument doc(1024);
+  doc["key"] = mapKey(key);
+  mapIntValue(key, value, doc);
+  postToMqtt(doc);
+}
+
+void onReceiveBoolean(uint16_t key, bool value) {
+  Serial.printf("LR: RECEIVED bool %u = %d\n", key, value);
+
+  DynamicJsonDocument doc(1024);
+  doc["key"] = mapKey(key);
+  doc["value"] = value;
+  postToMqtt(doc);
+}
+
+void onReceiveString(uint16_t key, String value) {
+  Serial.printf("LR: RECEIVED str  %u = %s\n", key, value);
+
+  DynamicJsonDocument doc(1024);
+  doc["key"] = mapKey(key);
+  doc["value"] = value;
+  postToMqtt(doc);
+}
+
+void onReceiveSystemMessage(String value) {
+  Serial.printf("LR: RECEIVED system message %s\n", value);
+
+  DynamicJsonDocument doc(1024);
+  doc["systemMessage"] = value;
+  postToMqtt(doc);
 }
 
 void onWiFiStaIpAssigned(WiFiEvent_t event, WiFiEventInfo_t info) {
@@ -60,38 +83,16 @@ void onWiFiStaDisconnected(WiFiEvent_t event, WiFiEventInfo_t info) {
   WiFi.begin(WLAN_SSID, WLAN_PSK);
 }
 
-void onLoRaReceive(int packetSize) {
-  Serial.printf("Received LoRa message, size: %d\n", packetSize);
+void postToMqtt(DynamicJsonDocument &doc) {
+  doc["loraSignalStrength"] = LoRa.packetRssi();
+  doc["wifiSignalStrength"] = WiFi.RSSI();
 
-  uint8_t packet[512];
-  int len = 0;
-  while (LoRa.available()) {
-    packet[len++] = (uint8_t)LoRa.read();
-  }
-  printBytes(packet, len);
-
-  // TODO: Decrypt
-  // TODO: Check signature/checksum
-
-  if (packet[0] != 0) {
-    Serial.print("  Remote system message: ");
-    Serial.println(String().concat(((char *)packet) + 1, len - 1));
-  } else {
-    uint16_t data[(len - 1) / 2];
-    memcpy(data, packet + 1, len - 1);
-
-    DynamicJsonDocument doc(8192);
-    doc["key"] = mapKey(data[0]);
-    mapIntValue(data[0], data[1], doc);
-    doc["loraSignalStrength"] = LoRa.packetRssi();
-    doc["wifiSignalStrength"] = WiFi.RSSI();
-
-    String json;
-    serializeJson(doc, json);
-    if (!client.publish(MQTT_TOPIC, json.c_str(), MQTT_RETAIN)) {
-      Serial.print("Failed to send MQTT message, rc=");
-      Serial.println(client.state());
-    }
+  String json;
+  serializeJson(doc, json);
+  Serial.printf("MQ: Sending %s\n", json.c_str());
+  if (!client.publish(MQTT_TOPIC, json.c_str(), MQTT_RETAIN)) {
+    Serial.print("Failed to send MQTT message, rc=");
+    Serial.println(client.state());
   }
 }
 
@@ -116,6 +117,11 @@ void setup() {
   WiFi.onEvent(onWiFiStaDisconnected, WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
   WiFi.onEvent(onWiFiStaIpAssigned, WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_GOT_IP);
   WiFi.begin(WLAN_SSID, WLAN_PSK);
+
+  lora.onReceiveInt(onReceiveInt);
+  lora.onReceiveBoolean(onReceiveBoolean);
+  lora.onReceiveString(onReceiveString);
+  lora.onReceiveSystemMessage(onReceiveSystemMessage);
 }
 
 void loop() {
@@ -132,8 +138,5 @@ void loop() {
     }
   }
 
-  int packetSize = LoRa.parsePacket();
-  if (packetSize) {
-    onLoRaReceive(packetSize);
-  }
+  lora.loop();
 }

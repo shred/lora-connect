@@ -19,22 +19,8 @@
 #include <WiFi.h>
 
 #include "HCSocket.h"
+#include "LoRaSender.h"
 #include "config.h"
-
-static void printBytes(uint8_t *data, size_t length) {
-  for (int i = 0; i < length; i++) {
-    Serial.printf("%02X", data[i]);
-  }
-  Serial.println();
-  for (int i = 0; i < length; i++) {
-    if (data[i] >= 32 && data[i] < 128) {
-      Serial.print((char)data[i]);
-    } else {
-      Serial.print('.');
-    }
-  }
-  Serial.println();
-}
 
 // AP connection
 bool apGate = false;
@@ -47,6 +33,9 @@ void processMessage(const JsonDocument &message);
 
 // Connection to appliance
 HCSocket socket = HCSocket(HC_APPLIANCE_KEY, HC_APPLIANCE_IV, processMessage);
+
+// LoRa
+LoRaSender lora;
 
 void WiFiApConnected(WiFiEvent_t event, WiFiEventInfo_t info) {
   Serial.printf("Connection attempt (AID %u, MAC %02X:%02X:%02X:%02X:%02X:%02X)\n",
@@ -68,45 +57,29 @@ void WiFiApConnected(WiFiEvent_t event, WiFiEventInfo_t info) {
   }
 }
 
-void sendLoRaPacket(uint8_t type, char *msg) {
-  sendLoRaPacket(type, msg, strlen(msg));
-}
-
-void sendLoRaPacket(uint8_t type, void *msg, size_t length) {
-  Serial.printf("LORA: Sending package type %u, length %u\n", type, length);
-  printBytes((uint8_t *)msg, length);
-
-  // TODO: encrypt, hash, secure
-  LoRa.beginPacket();
-  LoRa.setTxPower(LORA_POWER, (LORA_PABOOST == true ? RF_PACONFIG_PASELECT_PABOOST : RF_PACONFIG_PASELECT_RFO));
-  LoRa.write(type);
-  LoRa.write((uint8_t *)msg, length);
-  LoRa.endPacket();
-}
-
 void processMessage(const JsonDocument &msg) {
   Serial.println("Received an event");
   serializeJson(msg, Serial);
   Serial.println();
 
-  if (msg["action"] == "NOTIFY" && msg["resource"] == "/ro/values") {
+  if ((msg["action"] == "NOTIFY" && msg["resource"] == "/ro/values")
+      || (msg["action"] == "RESPONSE" && msg["resource"] == "/ro/allMandatoryValues")) {
     JsonArrayConst array = msg["data"];
-    size_t outputSize = array.size();
-    if (outputSize > 8) {
-      Serial.println("Too many data, need to split it (TODO)");
-      outputSize = 8;
+    for (JsonVariantConst entry : array) {
+      JsonObjectConst row = entry.as<JsonObjectConst>();
+      uint16_t uid = row["uid"];
+
+      if (row["value"].is<int32_t>()) {
+        lora.sendInt(uid, row["value"]);
+      } else if (row["value"].is<bool>()) {
+        lora.sendBoolean(uid, row["value"]);
+      } else if (row["value"].is<const char *>()) {
+        lora.sendString(uid, row["value"]);
+      } else {
+        Serial.printf("Don't know how to send uid %u\n", uid);
+      }
     }
-
-    Serial.printf("Output size: %u\n", outputSize);
-
-    int16_t outputBuffer[outputSize * 2];
-    for (int ix = 0; ix < outputSize; ix++) {
-      JsonObjectConst row = array[ix].as<JsonObjectConst>();
-      outputBuffer[ix * 2] = (int16_t)row["uid"];
-      outputBuffer[ix * 2 + 1] = (int16_t)row["value"];
-    }
-
-    sendLoRaPacket(0, outputBuffer, sizeof(outputBuffer));
+    lora.flush();
   } else if (msg["action"] == "POST" && msg["resource"] == "/ei/initialValues") {
     socket.startSession(msg["sID"], msg["data"][0]["edMsgID"]);
 
@@ -130,8 +103,7 @@ void processMessage(const JsonDocument &msg) {
     socket.sendAction("/ni/info");
   } else if (msg["action"] == "RESPONSE" && msg["resource"] == "/ni/info") {
     socket.sendAction("/ei/deviceReady", 2, "NOTIFY");
-    // socket.sendAction("/ro/allDescriptionChanges");
-    // socket.sendAction("/ro/allMandatoryValues");
+    socket.sendAction("/ro/allMandatoryValues");
   }
 }
 
@@ -142,7 +114,6 @@ void WiFiApIpAssigned(WiFiEvent_t event, WiFiEventInfo_t info) {
     apGate = false;
     Serial.printf("Assigned IP %s to AID %u\n", deviceIp.toString(), deviceAid);
     socket.connect(deviceIp, 80);
-    sendLoRaPacket(254, "Washer connected");
   }
 }
 
@@ -151,7 +122,6 @@ void WiFiApDisconnected(WiFiEvent_t event, WiFiEventInfo_t info) {
     deviceConnected = false;
     apGate = false;
     Serial.printf("Appliance disconnected, AID %u\n", deviceAid);
-    sendLoRaPacket(255, "Washer disconnected");
   }
 }
 
@@ -178,9 +148,10 @@ void setup() {
   WiFi.onEvent(WiFiApDisconnected, WiFiEvent_t::ARDUINO_EVENT_WIFI_AP_STADISCONNECTED);
   WiFi.onEvent(WiFiApIpAssigned, WiFiEvent_t::ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED);
 
-  sendLoRaPacket(253, "Reboot");
+  lora.sendSystemMessage("Boot Complete");
 }
 
 void loop() {
   socket.loop();
+  lora.loop();
 }

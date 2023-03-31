@@ -7,20 +7,13 @@ This project is still in a prototype state. It does its job, but there are cruci
 Important missing features that I am going to fix rather sooner than later:
 
 * Sender: LoRa transmission is not secured at all at the moment. Other LoRa receivers can eavesdrop the messages, and also send fake messages. The connection must be encrypted and secured by hashes.
-* Sender: Events with too many status chances must be split into separate LoRa transmissions. Currently only the first 8 status changes of an event are sent.
-
-## Known Issues
-
-Known issues that I am going to fix rather sooner than later:
-
-* Sender: `/ro/allDescriptionChanges` and `/ro/allMandatoryValues` actions cannot be requested from the appliance. The response is quite big, and is not received from the websockets library for unknown reasons. This breaks the encryption and causes a reconnection to the appliance. I have found no reason for that behavior yet, and cannot even tell if it is fixable.
-* Because of the issue above, the sender is currently unable to send the current status of the appliance, but is only sending changes to the status.
 
 ## Wish List
 
 These are nice-to-have features. Maybe I implement them sometimes later, but they have no priority for me.
 
 * This project uses a very simple "fire and forget" LoRa protocol that does not detect if a package was lost in transmission. The receiver should acknowledge each package, and the sender should repeat the package if it was not acknowledged.
+* The simple LoRa protocol isn't immune against replay attacks.
 * The nice OLED display is totally unused at the moment. It would be great if the display would show the current status of the device when the hardware button is pressed.
 
 ## Probably Never Done
