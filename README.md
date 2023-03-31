@@ -1,6 +1,6 @@
 # LoRa-Connect
 
-<img src="img/sender.jpg" style="float:right;margin:4pt" width="320px" alt="Sender Module" />
+<img src="img/sender.jpg" width="320px" alt="Sender Module" /> <img src="img/display.jpg" width="320px" alt="Status Display" />
 
 This project connects your _Home Connect_ device to your home automation via MQTT using LoRa.
 
