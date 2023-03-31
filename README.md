@@ -64,6 +64,21 @@ Configuring this project is not easy, and will take a considerable amount of tim
 * The other configuration values depend on your WLAN and MQTT setup. Note that you are actually working with two different WLAN settings. On the _sender_ side, you set up a WLAN AP that your appliance will connect to. On the _receiver_ side, you set the parameters of your existing home WLAN. Both WLANs must have different SSIDs and passwords. (If your appliance is connected to your home WLAN, you actually won't need this solution, but you can just use [hcpy](https://github.com/osresearch/hcpy).)
 * Check your `config.h` files again. If they are good, the configuration is finally completed. You can now build and install the sender and receiver firmwares.
 
+# MQTT Format
+
+The MQTT messages are JSON formatted and consist of these keys:
+
+* `key`: The decoded event key. This is a fixed string that is documented by Home Connect. Use this one for event selection.
+* `value`: The value of that event. Can be an integer, boolean, or String value depending on the event type.
+* `exp`: An expanded, more readable version of `value`, if available. Otherwise this field is missing.
+* `uid`: A numerical value of `key`. It is associated with your appliance, and may be different on other appliances. Better use `key`.
+* `loraSignalStrength`: RSSI of the LoRa connection to the sender.
+* `wifiSignalStrength`: RSSI of your local WLAN.
+
+If a system message is received from the remote sender, the MQTT message consist this key only:
+
+* `systemMessage`: System message string that was received.
+
 # Open Source
 
 This project is open source!

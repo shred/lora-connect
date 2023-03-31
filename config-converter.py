@@ -63,8 +63,7 @@ def main(argv):
     print('  }')
     print('}')
     print()
-    print('void mapIntValue(uint16_t key, int16_t value, JsonDocument &doc) {')
-    print('  String sval;')
+    print('String mapIntValue(uint16_t key, int32_t value) {')
     print('  switch (key) {')
     for key, value in sorted(valueMap.items()):
         if value == standardErrorMap:
@@ -72,8 +71,7 @@ def main(argv):
 
     print('      switch (value) {')
     for vk, vd in standardErrorMap.items():
-        print('        case %d: sval = F("%s");' % (vk, vd))
-    print('        default: sval = String(value, DEC);')
+        print('        case %d: return F("%s");' % (vk, vd))
     print('      }')
     print('      break;')
 
@@ -82,15 +80,11 @@ def main(argv):
             print('    case %d:' % (key))
             print('      switch (value) {')
             for vk, vd in sorted(value.items()):
-                print('        case %d: sval = F("%s");' % (vk, vd))
-            print('        default: sval = String(value, DEC);')
+                print('        case %d: return F("%s");' % (vk, vd))
             print('      }')
             print('      break;')
-    print('    default:')
-    print('      doc["value"] = value;')
-    print('      return;')
     print('  }')
-    print('  doc["value"] = sval;')
+    print('  return F("");');
     print('}')
     print()
 

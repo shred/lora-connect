@@ -41,8 +41,33 @@ void onReceiveInt(uint16_t key, int32_t value) {
   Serial.printf("LR: RECEIVED int  %u = %d\n", key, value);
 
   DynamicJsonDocument doc(1024);
-  doc["key"] = mapKey(key);
-  mapIntValue(key, value, doc);
+  String keyStr = mapKey(key);
+  doc["key"] = keyStr;
+  doc["value"] = value;
+
+  String mapped = mapIntValue(key, value);
+  if (mapped.length() > 0) {
+    doc["exp"] = mapped;
+  } else if (keyStr == F("BSH.Common.Root.SelectedProgram")) {
+    String mappedProgram = mapIntValue(value, 0);
+    if (mappedProgram.length() > 0) {
+      doc["exp"] = mappedProgram;
+    }
+  } else if (keyStr == F("BSH.Common.Option.RemainingProgramTime")
+             || keyStr == F("BSH.Common.Option.EstimatedTotalProgramTime")
+             || keyStr == F("BSH.Common.Option.FinishInRelative")) {
+    int remainHr = value / 3600;
+    int remainMin = (value / 60) % 60;
+    char buff[30];
+    snprintf(buff, sizeof(buff), "%1u:%02u", remainHr, remainMin);
+    doc["exp"] = String(buff);
+  } else if (keyStr == F("BSH.Common.Option.ProgramProgress")) {
+    char buff[30];
+    snprintf(buff, sizeof(buff), "%2d%%", value);
+    doc["exp"] = String(buff);
+  }
+
+  doc["uid"] = key;
   postToMqtt(doc);
 }
 
@@ -52,6 +77,7 @@ void onReceiveBoolean(uint16_t key, bool value) {
   DynamicJsonDocument doc(1024);
   doc["key"] = mapKey(key);
   doc["value"] = value;
+  doc["uid"] = key;
   postToMqtt(doc);
 }
 
@@ -61,6 +87,7 @@ void onReceiveString(uint16_t key, String value) {
   DynamicJsonDocument doc(1024);
   doc["key"] = mapKey(key);
   doc["value"] = value;
+  doc["uid"] = key;
   postToMqtt(doc);
 }
 

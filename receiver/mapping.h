@@ -30,9 +30,8 @@ String mapKey(uint16_t key);
 
 /**
  * Map a key value to a String if possible, using the config.json feature values.
- * If there is no string defined for the value, NULL is returned. In this case,
- * the value is most likely either integer or boolean type.
+ * If there is no string defined for the value, an empty string is returned.
  */
-void mapIntValue(uint16_t key, int16_t value, JsonDocument &doc);
+String mapIntValue(uint16_t key, int32_t value);
 
 #endif
