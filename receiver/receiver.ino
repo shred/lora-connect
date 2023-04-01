@@ -48,7 +48,8 @@ void onReceiveInt(uint16_t key, int32_t value) {
   String mapped = mapIntValue(key, value);
   if (mapped.length() > 0) {
     doc["exp"] = mapped;
-  } else if (keyStr == F("BSH.Common.Root.SelectedProgram")) {
+  } else if (keyStr == F("BSH.Common.Root.SelectedProgram")
+             || keyStr == F("BSH.Common.Root.ActiveProgram")) {
     String mappedProgram = mapIntValue(value, 0);
     if (mappedProgram.length() > 0) {
       doc["exp"] = mappedProgram;
