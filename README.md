@@ -22,8 +22,8 @@ See also my [To-Do list](TODO.md).
 
 ## DISCLAIMER
 
+* LoRa uses specific radio frequencies for transmission. The permitted frequencies, maximum transmission power, payload sizes, duty cycles, and other parameters vary from country to country. It is **YOUR responsibility** to properly configure the project, and to ensure it fully complies with the regulations of **YOUR** country. Failure to do so may result in legal problems, claims for damages, and even imprisonment. The author of this project cannot be held liable. This software is designed for use in countries of the European Union. Use in other countries might require changes to the code.
 * The project bases on reverse engineering. There is no guarantee that it will work with your Home Connect appliance. It might also stop working some day, e.g. after a protocol change of the manufacturer.
-* LoRa uses certain radio frequencies for transmission. The permitted frequencies, maximum transmission power, package sizes, duty cycles, and other parameters differ from country to country. It is **YOUR responsibility** to properly configure the project, and to make sure it complies to the rules of **YOUR** country. Failure to do so may result in legal problems, claims for damages, and even imprisonment. The author of this project cannot be held liable.
 * C isn't the language that I am most proficient with. The source code is ugly, badly formatted, probably has memory leaks, and certainly has a lot of things that a good C developer would do much better. I am open for your constructive feedback. But on the other hand, it is working for me, so I'm fine with it. 😉
 
 # Hardware
