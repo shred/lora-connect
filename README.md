@@ -25,6 +25,7 @@ See also my [To-Do list](TODO.md).
 * LoRa uses specific radio frequencies for transmission. The permitted frequencies, maximum transmission power, payload sizes, duty cycles, and other parameters vary from country to country. It is **YOUR responsibility** to properly configure the project, and to ensure it fully complies with the regulations of **YOUR** country. Failure to do so may result in legal problems, claims for damages, and even imprisonment. The author of this project cannot be held liable. This software is designed for use in countries of the European Union. Use in other countries might require changes to the code.
 * The project bases on reverse engineering. There is no guarantee that it will work with your Home Connect appliance. It might also stop working some day, e.g. after a protocol change of the manufacturer.
 * C isn't the language that I am most proficient with. The source code is ugly, badly formatted, probably has memory leaks, and certainly has a lot of things that a good C developer would do much better. I am open for your constructive feedback. But on the other hand, it is working for me, so I'm fine with it. 😉
+* The LoRa transport is hashed and AES256 encrypted, to avoid attackers to read the packages or send fake packages. Also there are resent attempts if a package was lost. However, the encryption is not state-of-the-art, especially because of the very limited LoRa package size. It is also not proof against replay attacks. This is fine for me, but don't expect top notch encryption here!
 
 # Hardware
 
@@ -42,13 +43,14 @@ You will need to run [hcpy hcauth](https://github.com/osresearch/hcpy) first to 
 
 ## Dependencies
 
-You need to install these dependencies in your Arduino library (with the tested version in brackets):
+You need to install these dependencies in your Arduino library (with the tested version in brackets, but later versions may work too):
 
 * [ArduinoJson](https://arduinojson.org/) by Benoit Blanchon (6.21.0)
 * [Base64](https://github.com/Densaugeo/base64_arduino) by Densaugeo (1.3.0)
 * [Crypto](https://rweather.github.io/arduinolibs/crypto.html) by Rhys Weatherley (0.4.0)
 * [Heltec ESP32 Dev-Boards](https://github.com/HelTecAutomation/Heltec_ESP32) by Heltec Automation (1.1.1)
 * [PubSubClient](https://github.com/knolleary/pubsubclient) by Nick O'Leary (2.8.0)
+* [Queue](https://github.com/SMFSW/Queue) by SMFSW (1.11)
 * [Web Sockets](https://github.com/Links2004/arduinoWebSockets) by Markus Sattler (2.3.6)
 
 # Configuration
@@ -60,6 +62,7 @@ Configuring this project is not easy, and will take a considerable amount of tim
 * In the `sender` and `receiver` directory, you will find `config.h.example` files. Make a copy of each, named `config.h`.
 * Now run the `config-converter.py` tool. It will extract the `key` and `iv` values that are required for the next step, and will also generate a `mapping.cpp` file that is needed by the receiver. Invocation is: `./config-converter.py /your/path/to/hcpy/config.json > receiver/mapping.cpp`
 * The previous step also extracts the `key` and `iv` values from the `config.json` file. You can copy the output into your `sender/config.h` file. If the `config-converter.py` complains that there is no `iv` value, I'm afraid you have bad luck. This project only supports websockets via port 80, with a special kind of encryption. If there is no `iv` value, it means that your appliance uses the wss protocol via port 443, with standard SSL. Also, this project currently only supports a single appliance. (See [TODO](TODO.md))
+* `config-converter.py` also generates a random encryption key for the LoRa transmission. If you haven't done so yet, copy the `LORA_ENCRYPT_KEY` line into both your `sender/config.h` and `receiver/config.h`. Make sure that both sides are using the same key.
 * The `LORA` defines in the `config.h` are depending on your country. To find the correct values, contact the dealer of your LoRa board or read the Heltec manual. Do not just use values that you have found somewhere on the internet. The `LORA` configuration of the sender and receiver must be identical.
 * The other configuration values depend on your WLAN and MQTT setup. Note that you are actually working with two different WLAN settings. On the _sender_ side, you set up a WLAN AP that your appliance will connect to. On the _receiver_ side, you set the parameters of your existing home WLAN. Both WLANs must have different SSIDs and passwords. (If your appliance is connected to your home WLAN, you actually won't need this solution, but you can just use [hcpy](https://github.com/osresearch/hcpy).)
 * Check your `config.h` files again. If they are good, the configuration is finally completed. You can now build and install the sender and receiver firmwares.

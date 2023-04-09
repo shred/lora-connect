@@ -86,17 +86,11 @@ public:
   void sendReply(const JsonDocument &query, const JsonDocument &reply);
 
   /**
-   * Creates a random nonce that is required by some appliances.
-   */
-  String createRandomNonce();
-
-  /**
    * Must be invoked in the .ino loop function.
    */
   void loop();
 
 private:
-  uint8_t psk[32];
   uint8_t iv[16];
 
   uint8_t enckey[SHA256::HASH_SIZE];

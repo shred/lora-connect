@@ -18,6 +18,33 @@
 #ifndef __LoRaReceiver__
 #define __LoRaReceiver__
 
+#include <AES.h>
+#include <Arduino.h>
+#include <assert.h>
+#include <SHA256.h>
+
+// Must be a multiple of 16. In the European Union, the maximum permitted LoRa
+// payload size is 51, so the next smaller payload size is 48.
+#define MAX_PAYLOAD_SIZE 48
+
+// Size of the acknowledge package, must be a multiple of 16.
+#define MAX_ACK_SIZE 16
+
+typedef struct payload {
+  uint16_t number;
+  uint8_t hash[4];
+  uint8_t length;
+  uint8_t data[MAX_PAYLOAD_SIZE - sizeof(number) - sizeof(hash) - sizeof(length)];
+} Payload;
+static_assert(sizeof(struct payload) == MAX_PAYLOAD_SIZE, "payload structure does not have expected size");
+
+typedef struct acknowledge {
+  uint16_t number;
+  uint8_t hash[4];
+  uint8_t pad[MAX_ACK_SIZE - sizeof(number) - sizeof(hash)];
+} Acknowledge;
+static_assert(sizeof(struct acknowledge) == MAX_ACK_SIZE, "acknowledge structure does not have expected size");
+
 /**
  * LoRa Connection
  */
@@ -31,7 +58,7 @@ public:
   /**
    * Constuctor.
    */
-  LoRaReceiver();
+  LoRaReceiver(const char *base64key);
 
   /**
    * Callback when an integer was received.
@@ -64,9 +91,15 @@ private:
   int32_t readInteger(size_t len, bool neg = false);
   String readString();
 
-  uint8_t receiveBuffer[128];  // TODO: Find out maximum length of a LoRa package.
-  size_t receiveLength;
+  Payload payload;
   uint8_t cursor;
+  uint16_t lastMessageNumber;
+
+  uint8_t enckey[SHA256::HASH_SIZE];
+  uint8_t mackey[SHA256::HASH_SIZE];
+  AES256 aesEncrypt;
+  AES256 aesDecrypt;
+  SHA256 hmacSha256;
 
   ReceiveIntEvent intEventListener;
   ReceiveBooleanEvent booleanEventListener;

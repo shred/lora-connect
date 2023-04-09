@@ -37,6 +37,10 @@
 #define LORA_POWER xx
 #define LORA_PABOOST xx
 
+// Encryption key for LoRa transmissions
+// Must be the same key as in sender/config.h!
+#define LORA_ENCRYPT_KEY "myLoRaSeCrEtKeY"
+
 
 //--- YOUR LOCAL WLAN --------------------------------
 //

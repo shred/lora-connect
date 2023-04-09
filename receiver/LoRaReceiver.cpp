@@ -17,7 +17,9 @@
 
 #include <heltec.h>
 
+#include "config.h"
 #include "LoRaReceiver.h"
+#include "base64url.h"
 
 static void printBytes(uint8_t *data, size_t length) {
   for (int i = 0; i < length; i++) {
@@ -34,7 +36,30 @@ static void printBytes(uint8_t *data, size_t length) {
   Serial.println();
 }
 
-LoRaReceiver::LoRaReceiver() {
+LoRaReceiver::LoRaReceiver(const char *base64key) {
+  uint8_t key[32];
+  if (!base64UrlDecode(base64key, key, sizeof(key))) {
+    Serial.println("LR: FATAL: key is invalid, check your config.h!");
+  }
+
+  hmacSha256.resetHMAC(key, sizeof(key));
+  hmacSha256.update("LORAENC", 7);
+  hmacSha256.finalizeHMAC(key, sizeof(key), enckey, sizeof(enckey));
+
+  hmacSha256.resetHMAC(key, sizeof(key));
+  hmacSha256.update("LORAMAC", 7);
+  hmacSha256.finalizeHMAC(key, sizeof(key), mackey, sizeof(mackey));
+
+  aesEncrypt.clear();
+  if (!aesEncrypt.setKey(enckey, aesEncrypt.keySize())) {
+    throw std::invalid_argument("Invalid key");
+  }
+  aesDecrypt.clear();
+  if (!aesDecrypt.setKey(enckey, aesEncrypt.keySize())) {
+    throw std::invalid_argument("Invalid key");
+  }
+
+  lastMessageNumber = 0;
 }
 
 void LoRaReceiver::onReceiveInt(ReceiveIntEvent intEventListener) {
@@ -54,36 +79,100 @@ void LoRaReceiver::onReceiveSystemMessage(ReceiveSystemMessageEvent systemMessag
 }
 
 void LoRaReceiver::onLoRaReceive(size_t packetSize) {
-  Serial.printf("LR: Received message, size: %u\n", packetSize);
-
   if (packetSize == 0) {
     Serial.println("LR: Empty message, ignoring");
     return;
   }
 
-  receiveLength = 0;
+  if (packetSize != sizeof(Payload)) {
+    Serial.printf("LR: Unexpected message length %u, ignoring\n", packetSize);
+    return;
+  }
+
+  uint8_t cryptBuffer[sizeof(Payload)];
+  size_t receiveLength = 0;
   while (LoRa.available()) {
-    if (receiveLength > sizeof(receiveBuffer)) {
+    if (receiveLength > sizeof(cryptBuffer)) {
       Serial.println("LR: Message exceeds buffer, ignoring");
       return;
     }
-    receiveBuffer[receiveLength++] = (uint8_t)LoRa.read();
+    cryptBuffer[receiveLength++] = (uint8_t)LoRa.read();
   }
 
-  if (receiveLength != packetSize) {
-    Serial.printf("LR: Expected message length was %u, but is %u\n", packetSize, receiveLength);
+  if (receiveLength != sizeof(cryptBuffer)) {
+    Serial.printf("LR: Expected message length was %u, but is %u\n", sizeof(cryptBuffer), receiveLength);
     return;
   }
 
   Serial.println("LR: == RECEIVED ==");
-  printBytes(receiveBuffer, receiveLength);
+  printBytes(cryptBuffer, receiveLength);
 
-  // TODO: Decrypt
-  // TODO: Check signature/checksum
+  // Decrypt
+  uint8_t *clearBuffer = (uint8_t *)&payload;
+  size_t blockSize = aesEncrypt.blockSize();
+  for (int ix = 0; ix < sizeof(cryptBuffer); ix += blockSize) {
+    aesDecrypt.decryptBlock(clearBuffer + ix, cryptBuffer + ix);
+  }
+
+  Serial.println("LR: Decrypted");
+  printBytes(clearBuffer, sizeof(payload));
+
+  uint8_t theirHash[sizeof(payload.hash)];
+  memcpy(theirHash, payload.hash, sizeof(theirHash));
+  memset(payload.hash, 0, sizeof(payload.hash));
+
+  uint8_t ourHash[sizeof(payload.hash)];
+  hmacSha256.resetHMAC(mackey, sizeof(mackey));
+  hmacSha256.update(&payload, sizeof(payload));
+  hmacSha256.finalizeHMAC(mackey, sizeof(mackey), ourHash, sizeof(ourHash));
+
+  if (0 != memcmp(theirHash, ourHash, sizeof(ourHash))) {
+    Serial.println("LR: Bad HMAC, maybe not our package");
+    return;
+  }
+
+  // Send Acknowledge
+  Acknowledge acknowledge;
+  acknowledge.number = payload.number;
+  memset(acknowledge.hash, 0, sizeof(acknowledge.hash));
+  for (int ix = 0; ix < sizeof(acknowledge.pad); ix++) {
+    acknowledge.pad[ix] = random(256);
+  }
+
+  uint8_t ackHash[sizeof(acknowledge.hash)];
+  hmacSha256.resetHMAC(mackey, sizeof(mackey));
+  hmacSha256.update(&acknowledge, sizeof(acknowledge));
+  hmacSha256.finalizeHMAC(mackey, sizeof(mackey), ackHash, sizeof(ackHash));
+  memcpy(acknowledge.hash, ackHash, sizeof(acknowledge.hash));
+
+  Serial.println("LR: Ack unencrypted");
+  printBytes((uint8_t *)&acknowledge, sizeof(acknowledge));
+
+  uint8_t ackEncrypted[sizeof(acknowledge)];
+  aesEncrypt.encryptBlock(ackEncrypted, (uint8_t *)&acknowledge);
+
+  Serial.println("LR: Ack encrypted");
+  printBytes((uint8_t *)&ackEncrypted, sizeof(acknowledge));
+
+  yield();
+  delay(100);
+  LoRa.beginPacket();
+  LoRa.setTxPower(LORA_POWER, (LORA_PABOOST == true ? RF_PACONFIG_PASELECT_PABOOST : RF_PACONFIG_PASELECT_RFO));
+  LoRa.write(ackEncrypted, sizeof(ackEncrypted));
+  LoRa.endPacket();
+  LoRa.flush();
+  yield();
+
+  if (payload.number == lastMessageNumber) {
+    Serial.println("LR: Message already received, maybe ACK was lost, ignoring");
+    return;
+  }
+
+  lastMessageNumber = payload.number;
 
   cursor = 0;
-  while (cursor < receiveLength) {
-    uint8_t type = receiveBuffer[cursor++];
+  while (cursor < payload.length) {
+    uint8_t type = payload.data[cursor++];
     switch (type) {
       case 0:  // int, constant zero
         {
@@ -164,8 +253,8 @@ void LoRaReceiver::onLoRaReceive(size_t packetSize) {
 
 uint16_t LoRaReceiver::readKey() {
   uint16_t result = 0;
-  if (cursor + 2 <= receiveLength) {
-    result = (receiveBuffer[cursor] & 0xFF) | ((receiveBuffer[cursor + 1] & 0xFF) << 8);
+  if (cursor + 2 <= payload.length) {
+    result = (payload.data[cursor] & 0xFF) | ((payload.data[cursor + 1] & 0xFF) << 8);
     cursor += 2;
   }
   return result;
@@ -173,10 +262,10 @@ uint16_t LoRaReceiver::readKey() {
 
 int32_t LoRaReceiver::readInteger(size_t len, bool neg) {
   int32_t result = 0;
-  if (cursor + len <= receiveLength) {
+  if (cursor + len <= payload.length) {
     for (int pos = len - 1; pos >= 0; pos--) {
       result <<= 8;
-      result |= receiveBuffer[cursor + pos] & 0xFF;
+      result |= payload.data[cursor + pos] & 0xFF;
     }
     cursor += len;
   }
@@ -188,8 +277,8 @@ int32_t LoRaReceiver::readInteger(size_t len, bool neg) {
 
 String LoRaReceiver::readString() {
   size_t strlen = 0;
-  uint8_t *start = receiveBuffer + cursor;
-  while (receiveBuffer[cursor] != 0 && cursor < receiveLength) {
+  uint8_t *start = payload.data + cursor;
+  while (payload.data[cursor] != 0 && cursor < payload.length) {
     strlen++;
     cursor++;
   }
@@ -199,6 +288,7 @@ String LoRaReceiver::readString() {
 
 void LoRaReceiver::loop() {
   int packetSize = LoRa.parsePacket();
+  yield();
   if (packetSize) {
     onLoRaReceive(packetSize);
   }

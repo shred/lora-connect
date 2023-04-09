@@ -37,6 +37,10 @@
 #define LORA_POWER xx
 #define LORA_PABOOST xx
 
+// Encryption key for LoRa transmissions
+// Must be the same key as in receiver/config.h!
+#define LORA_ENCRYPT_KEY "myLoRaSeCrEtKeY"
+
 
 //--- ACCESS POINT -----------------------------------
 //

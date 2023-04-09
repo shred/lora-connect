@@ -20,6 +20,7 @@
 
 #include "HCSocket.h"
 #include "LoRaSender.h"
+#include "base64url.h"
 #include "config.h"
 
 // AP connection
@@ -32,10 +33,10 @@ uint8_t expectedMac[6] = HC_APPLIANCE_MAC;
 void processMessage(const JsonDocument &message);
 
 // Connection to appliance
-HCSocket socket = HCSocket(HC_APPLIANCE_KEY, HC_APPLIANCE_IV, processMessage);
+HCSocket socket(HC_APPLIANCE_KEY, HC_APPLIANCE_IV, processMessage);
 
 // LoRa
-LoRaSender lora;
+LoRaSender lora(LORA_ENCRYPT_KEY);
 
 void WiFiApConnected(WiFiEvent_t event, WiFiEventInfo_t info) {
   Serial.printf("Connection attempt (AID %u, MAC %02X:%02X:%02X:%02X:%02X:%02X)\n",
@@ -95,7 +96,7 @@ void processMessage(const JsonDocument &msg) {
 
     // send authentication
     StaticJsonDocument<200> nonce;
-    nonce["nonce"] = socket.createRandomNonce();
+    nonce["nonce"] = createRandomNonce();
     socket.sendActionWithData("/ci/authentication", nonce, 2);
   } else if (msg["action"] == "RESPONSE" && msg["resource"] == "/ci/authentication") {
     socket.sendAction("/ci/info", 2);

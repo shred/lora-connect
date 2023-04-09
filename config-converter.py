@@ -16,12 +16,17 @@
 # GNU General Public License for more details.
 #
 
+from base64 import urlsafe_b64encode
 import json
+import os
 import sys
 
 standardErrorMap = {0: 'Off', 1: 'Present', 2: 'Confirmed'}
 
 def main(argv):
+    loraKey = bytearray(os.urandom(32))
+    loraKeyBase64 = urlsafe_b64encode(loraKey).decode('ASCII').rstrip('=')
+
     with open(argv[0], "r") as f:
         devices = json.load(f)
 
@@ -38,6 +43,12 @@ def main(argv):
     print('', file=sys.stderr)
     print('#define HC_APPLIANCE_KEY "%s"' % (device['key']), file=sys.stderr)
     print('#define HC_APPLIANCE_IV "%s"' % (device['iv']), file=sys.stderr)
+    print('', file=sys.stderr)
+
+    print('New random key for your sender/config.h and receiver/config.h file:', file=sys.stderr)
+    print('', file=sys.stderr)
+    print('#define LORA_ENCRYPT_KEY "%s"' % loraKeyBase64, file=sys.stderr)
+    print('', file=sys.stderr)
 
     featureMap = {}
     valueMap = {}

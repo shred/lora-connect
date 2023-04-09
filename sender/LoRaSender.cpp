@@ -15,14 +15,17 @@
  * GNU General Public License for more details.
  */
 
+#include <Arduino.h>
+#include <cppQueue.h>
 #include <heltec.h>
 
+#include "base64url.h"
 #include "LoRaSender.h"
 
 #include "config.h"
 
 #define LORA_PACKAGE_RATE_LIMIT 1000
-#define LORA_FLUSH_FREQUENCY 5000
+#define LORA_ACK_TIMEOUT 1000
 
 
 static void printBytes(uint8_t *data, size_t length) {
@@ -46,12 +49,37 @@ inline static unsigned long timeDifference(unsigned long now, unsigned long past
   return past > 0 ? (now - past) : 0;
 }
 
-LoRaSender::LoRaSender() {
-  sendPosition = 0;
-
+LoRaSender::LoRaSender(const char *base64key) {
   unsigned long now = millis();
   lastSent = now;
-  lastFlush = now;
+
+  uint8_t key[32];
+  if (!base64UrlDecode(base64key, key, sizeof(key))) {
+    Serial.println("LR: FATAL: key is invalid, check your config.h!");
+  }
+
+  hmacSha256.resetHMAC(key, sizeof(key));
+  hmacSha256.update("LORAENC", 7);
+  hmacSha256.finalizeHMAC(key, sizeof(key), enckey, sizeof(enckey));
+
+  hmacSha256.resetHMAC(key, sizeof(key));
+  hmacSha256.update("LORAMAC", 7);
+  hmacSha256.finalizeHMAC(key, sizeof(key), mackey, sizeof(mackey));
+
+  aesEncrypt.clear();
+  if (!aesEncrypt.setKey(enckey, aesEncrypt.keySize())) {
+    throw std::invalid_argument("Invalid key");
+  }
+  aesDecrypt.clear();
+  if (!aesDecrypt.setKey(enckey, aesEncrypt.keySize())) {
+    throw std::invalid_argument("Invalid key");
+  }
+
+  senderQueue = new cppQueue(sizeof(Payload), PAYLOAD_BUFFER_SIZE);
+}
+
+LoRaSender::~LoRaSender() {
+  delete senderQueue;
 }
 
 void LoRaSender::sendInt(uint16_t key, int32_t value) {
@@ -109,73 +137,188 @@ void LoRaSender::sendSystemMessage(String message) {
   Serial.printf("LR: send system msg %s\n", message);
 
   size_t length = message.length() + 1;
-  if (sendPosition + 1 + length > sizeof(sendBuffer)) {
+  if (payloadBuffer.length + 1 + length > sizeof(payloadBuffer.data)) {
     flush();
   }
-  if (sendPosition + 1 + length > sizeof(sendBuffer)) {
+  if (payloadBuffer.length + 1 + length > sizeof(payloadBuffer.data)) {
     Serial.printf("LR: System Message '%s' is too big and was dropped.", message);
   }
 
-  sendBuffer[sendPosition++] = 255;
-  memcpy(sendBuffer + sendPosition, message.c_str(), length);
-  sendPosition += length;
+  payloadBuffer.data[payloadBuffer.length++] = 255;
+  memcpy(payloadBuffer.data + payloadBuffer.length, message.c_str(), length);
+  payloadBuffer.length += length;
 
   flush();  // send system message immediately
 }
 
 void LoRaSender::sendMessage(uint8_t type, uint16_t key, uint8_t *msg, size_t length) {
-  if (sendPosition + 3 + length > sizeof(sendBuffer)) {
+  if (payloadBuffer.length + 3 + length > sizeof(payloadBuffer.data)) {
     flush();
   }
-  if (sendPosition + 3 + length > sizeof(sendBuffer)) {
+  if (payloadBuffer.length + 3 + length > sizeof(payloadBuffer.data)) {
     Serial.printf("LR: Message type %u, key %u, size %u is too big and was dropped.", type, key, length);
   }
 
-  sendBuffer[sendPosition++] = type;
-  sendBuffer[sendPosition++] = key & 0xFF;
-  sendBuffer[sendPosition++] = (key >> 8) & 0xFF;
+  payloadBuffer.data[payloadBuffer.length++] = type;
+  payloadBuffer.data[payloadBuffer.length++] = key & 0xFF;
+  payloadBuffer.data[payloadBuffer.length++] = (key >> 8) & 0xFF;
   if (length > 0) {
-    memcpy(sendBuffer + sendPosition, msg, length);
-    sendPosition += length;
+    memcpy(payloadBuffer.data + payloadBuffer.length, msg, length);
+    payloadBuffer.length += length;
   }
 }
 
 void LoRaSender::flush() {
-  if (sendPosition != 0) {
+  if (payloadBuffer.length != 0) {
     Serial.println("LR: flushing");
-    sendRaw(sendBuffer, sendPosition);
-    sendPosition = 0;
+    sendRaw(payloadBuffer);
+    payloadBuffer.number++;
+    payloadBuffer.length = 0;
   }
-  lastFlush = millis();
 }
 
 void LoRaSender::sleep() {
   LoRa.idle();
 }
 
-void LoRaSender::sendRaw(uint8_t *msg, size_t length) {
-  // Make sure not to send more often than once per second
-  unsigned long now = millis();
-  unsigned long lastSentDiff = timeDifference(now, lastSent);
-  if (lastSentDiff < LORA_PACKAGE_RATE_LIMIT) {
-    delay(LORA_PACKAGE_RATE_LIMIT - lastSentDiff);
+void LoRaSender::sendRaw(Payload &payload) {
+  if (!senderQueue->push(&payload)) {
+    Serial.println("LR: Queue is full, payload dropped!");
   }
-  lastSent = now;
-
-  Serial.println("LR: == SENDING ==");
-  printBytes(msg, length);
-
-  // TODO: Encrypt, Hash
-  LoRa.beginPacket();
-  LoRa.setTxPower(LORA_POWER, (LORA_PABOOST == true ? RF_PACONFIG_PASELECT_PABOOST : RF_PACONFIG_PASELECT_RFO));
-  LoRa.write(msg, length);
-  LoRa.endPacket();
 }
 
 void LoRaSender::loop() {
-  unsigned long now = millis();
-
-  if (timeDifference(now, lastFlush) > LORA_FLUSH_FREQUENCY) {
-    flush();
+  // Make sure to stay within the permitted duty cycle!
+  unsigned long lastSentDiff = timeDifference(millis(), lastSent);
+  if (lastSentDiff < LORA_PACKAGE_RATE_LIMIT) {
+    return;
   }
+
+  // Fetch payload from queue
+  Payload sendPayload;
+  if (!senderQueue->pop(&sendPayload)) {
+    // Queue is empty
+    return;
+  }
+
+  if (sendPayload.length == 0) {
+    // Payload is empty
+    return;
+  }
+
+  // Give package a random message number
+  sendPayload.number = random(65536);
+
+  // Clear hash for correct hashing
+  memset(sendPayload.hash, 0, sizeof(sendPayload.hash));
+
+  // Fill unused payload part with random numbers
+  for (int ix = sendPayload.length; ix < sizeof(sendPayload.data); ix++) {
+    sendPayload.data[ix] = random(256);
+  }
+
+  // Compute hash
+  // We will only use the first bytes of that hash, for space reasons.
+  // It is still better than nothing.
+  uint8_t hash[sizeof(sendPayload.hash)];
+  hmacSha256.resetHMAC(mackey, sizeof(mackey));
+  hmacSha256.update(&sendPayload, sizeof(sendPayload));
+  hmacSha256.finalizeHMAC(mackey, sizeof(mackey), hash, sizeof(hash));
+  memcpy(sendPayload.hash, hash, sizeof(sendPayload.hash));
+
+  Serial.println("LR: == SENDING ==");
+  printBytes((uint8_t *)&sendPayload, sizeof(sendPayload));
+
+  // Encrypt
+  // TODO: This is rather weak, use a better mode of operation here!
+  const uint8_t *clearBuffer = (const uint8_t *)&sendPayload;
+  uint8_t cryptBuffer[sizeof(sendPayload)];
+  size_t blockSize = aesEncrypt.blockSize();
+  for (int ix = 0; ix < sizeof(cryptBuffer); ix += blockSize) {
+    aesEncrypt.encryptBlock(cryptBuffer + ix, clearBuffer + ix);
+  }
+
+  Serial.println("LR: Encrypted");
+  printBytes(cryptBuffer, sizeof(cryptBuffer));
+
+  yield();
+
+  for (int attempt = 1; attempt < 4; attempt++) {
+    Serial.printf("LR: Sending, attempt %u\n", attempt);
+    yield();
+    LoRa.beginPacket();
+    LoRa.setTxPower(LORA_POWER, (LORA_PABOOST == true ? RF_PACONFIG_PASELECT_PABOOST : RF_PACONFIG_PASELECT_RFO));
+    LoRa.write(cryptBuffer, sizeof(cryptBuffer));
+    LoRa.endPacket();
+    LoRa.flush();
+    yield();
+    delay(50);
+
+    lastSent = millis();
+
+    while (timeDifference(millis(), lastSent) < LORA_ACK_TIMEOUT) {
+      // Wait for acknowledge
+      int packetSize = LoRa.parsePacket();
+      yield();
+      if (packetSize == 0) {
+        continue;
+      }
+      Serial.printf("LR: received possible package %u\n", packetSize);
+      if (packetSize == sizeof(Acknowledge)) {
+        bool isAck = checkAcknowledge(sendPayload.number);
+        if (isAck) {
+          return;  // TODO: This is ugly!
+        }
+      }
+    }
+  }
+  Serial.println("LR: Not acknowledged, maybe receiver is offline?");
+}
+
+bool LoRaSender::checkAcknowledge(uint16_t expectedNumber) {
+  uint8_t cryptBuffer[sizeof(Acknowledge)];
+
+  size_t receiveLength = 0;
+  while (LoRa.available()) {
+    if (receiveLength > sizeof(cryptBuffer)) {
+      Serial.println("LR: Acknowledge package exceeds buffer, ignoring");
+      return false;
+    }
+    cryptBuffer[receiveLength++] = (uint8_t)LoRa.read();
+  }
+
+  if (receiveLength != sizeof(Acknowledge)) {
+    Serial.printf("LR: Expected acknowledge length was %u, but is %u\n", sizeof(Acknowledge), receiveLength);
+    return false;
+  }
+
+  Serial.println("LR: ACK Encrypted");
+  printBytes(cryptBuffer, sizeof(cryptBuffer));
+
+  Acknowledge unencrypted;
+  aesDecrypt.decryptBlock((uint8_t *)&unencrypted, cryptBuffer);
+
+  Serial.println("LR: ACK Decrypted");
+  printBytes((uint8_t *)&unencrypted, sizeof(unencrypted));
+
+  uint8_t theirHash[sizeof(unencrypted.hash)];
+  memcpy(theirHash, unencrypted.hash, sizeof(theirHash));
+  memset(unencrypted.hash, 0, sizeof(unencrypted.hash));
+
+  uint8_t ourHash[sizeof(unencrypted.hash)];
+  hmacSha256.resetHMAC(mackey, sizeof(mackey));
+  hmacSha256.update(&unencrypted, sizeof(unencrypted));
+  hmacSha256.finalizeHMAC(mackey, sizeof(mackey), ourHash, sizeof(ourHash));
+
+  if (0 != memcmp(theirHash, ourHash, sizeof(ourHash))) {
+    Serial.println("LR: Bad acknowledge HMAC");
+    return false;
+  }
+
+  if (unencrypted.number != expectedNumber) {
+    Serial.println("LR: Bad acknowledge package number");
+    return false;
+  }
+
+  return true;
 }

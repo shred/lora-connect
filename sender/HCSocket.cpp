@@ -15,16 +15,14 @@
  * GNU General Public License for more details.
  */
 
-#define BASE64_URL  // set base64.hpp to base64url mode
-
 #define SOCKET_DEBUG
 
 #include <AES.h>
 #include <ArduinoJson.h>
-#include <base64.hpp>
 #include <SHA256.h>
 #include <WebSocketsClient.h>
 
+#include "base64url.h"
 #include "CBC.h"  // crypto legacy, local copy
 #include "HCSocket.h"
 
@@ -47,15 +45,13 @@ static void printBytes(uint8_t *data, size_t length) {
 HCSocket::HCSocket(const char *base64psk, const char *base64iv, MessageEvent listener) {
   eventListener = listener;
 
-  if (decode_base64_length((unsigned char *)base64psk) != 32) {
-    throw std::invalid_argument("Invalid key length");
+  uint8_t psk[32];
+  if (!base64UrlDecode(base64psk, psk, sizeof(psk))) {
+    Serial.println("HC: FATAL: psk is invalid, check your config.h!");
   }
-  decode_base64((unsigned char *)base64psk, psk);
-
-  if (decode_base64_length((unsigned char *)base64iv) != 16) {
-    throw std::invalid_argument("Invalid IV length");
+  if (!base64UrlDecode(base64iv, iv, sizeof(iv))) {
+    Serial.println("HC: FATAL: iv is invalid, check your config.h!");
   }
-  decode_base64((unsigned char *)base64iv, iv);
 
   hmacSha256.resetHMAC(psk, sizeof(psk));
   hmacSha256.update("ENC", 3);
@@ -278,22 +274,6 @@ void HCSocket::sendReply(const JsonDocument &query, const JsonDocument &reply) {
     doc.createNestedArray("data").add(reply);  // stores by copy
   }
   send(doc);
-}
-
-String HCSocket::createRandomNonce() {
-  uint8_t tokenBin[32];
-  for (int ix = 0; ix < sizeof(tokenBin); ix++) {
-    tokenBin[ix] = random(256);
-  }
-
-  uint8_t encodedToken[48];
-  size_t len = encode_base64(tokenBin, sizeof(tokenBin), encodedToken);
-  while (len > 0 && encodedToken[len - 1] == '=') {
-    encodedToken[len - 1] = 0;
-    len--;
-  }
-
-  return String((char *)&encodedToken);
 }
 
 void HCSocket::onWsEvent(WStype_t type, uint8_t *payload, size_t length) {

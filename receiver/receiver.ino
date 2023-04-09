@@ -29,7 +29,7 @@
 unsigned long beforeMqttConnection = millis();
 bool connected = false;
 WiFiClient wifiClient;
-LoRaReceiver lora;
+LoRaReceiver lora(LORA_ENCRYPT_KEY);
 PubSubClient client(MQTT_SERVER_HOST, MQTT_SERVER_PORT, wifiClient);
 
 inline static unsigned long timeDifference(unsigned long now, unsigned long past) {
@@ -50,7 +50,7 @@ void onReceiveInt(uint16_t key, int32_t value) {
     doc["exp"] = mapped;
   } else if (keyStr == F("BSH.Common.Root.SelectedProgram")
              || keyStr == F("BSH.Common.Root.ActiveProgram")) {
-    String mappedProgram = mapIntValue(value, 0);
+    String mappedProgram = mapKey(value);
     if (mappedProgram.length() > 0) {
       doc["exp"] = mappedProgram;
     }
