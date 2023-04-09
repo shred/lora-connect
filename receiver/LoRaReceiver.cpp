@@ -85,29 +85,59 @@ void LoRaReceiver::onLoRaReceive(size_t packetSize) {
   while (cursor < receiveLength) {
     uint8_t type = receiveBuffer[cursor++];
     switch (type) {
-      case 0:  // uint16_t positive
-      case 1: { // int16_t negative
+      case 0:  // int, constant zero
+        {
           uint16_t key = readKey();
-          int32_t value = readInteger();
-          if (type == 1) {
-            value = -value;
+          if (intEventListener) {
+            intEventListener(key, 0);
           }
+        }
+
+      case 1:  // uint8_t positive
+      case 2:  // uint8_t negative
+        {
+          uint16_t key = readKey();
+          int32_t value = readInteger(1, type == 2);
           if (intEventListener) {
             intEventListener(key, value);
           }
         }
         break;
 
-      case 2:  // boolean "false"
-      case 3: { // boolean "true"
+      case 3:  // uint16_t positive
+      case 4:  // uint16_t negative
+        {
           uint16_t key = readKey();
-          if (booleanEventListener) {
-            booleanEventListener(key, type == 3);
+          int32_t value = readInteger(2, type == 4);
+          if (intEventListener) {
+            intEventListener(key, value);
           }
         }
         break;
 
-      case 4: { // String
+      case 5:  // uint32_t positive
+      case 6:  // uint32_t negative
+        {
+          uint16_t key = readKey();
+          int32_t value = readInteger(4, type == 6);
+          if (intEventListener) {
+            intEventListener(key, value);
+          }
+        }
+        break;
+
+      case 7:  // boolean "false"
+      case 8:  // boolean "true"
+        {
+          uint16_t key = readKey();
+          if (booleanEventListener) {
+            booleanEventListener(key, type == 8);
+          }
+        }
+        break;
+
+      case 9:  // String
+        {
           uint16_t key = readKey();
           String str = readString();
           if (stringEventListener) {
@@ -116,7 +146,8 @@ void LoRaReceiver::onLoRaReceive(size_t packetSize) {
         }
         break;
 
-      case 255: { // System message
+      case 255:  // System message
+        {
           String str = readString();
           if (systemMessageEventListener) {
             systemMessageEventListener(str);
@@ -125,7 +156,7 @@ void LoRaReceiver::onLoRaReceive(size_t packetSize) {
         break;
 
       default:
-        Serial.printf("Unknown message type %u, ignoring rest of message", type);
+        Serial.printf("LR: Unknown message type %u, ignoring rest of message\n", type);
         return;
     }
   }
@@ -140,11 +171,17 @@ uint16_t LoRaReceiver::readKey() {
   return result;
 }
 
-int32_t LoRaReceiver::readInteger() {
+int32_t LoRaReceiver::readInteger(size_t len, bool neg) {
   int32_t result = 0;
-  if (cursor + 2 <= receiveLength) {
-    result = (receiveBuffer[cursor] & 0xFF) | ((receiveBuffer[cursor + 1] & 0xFF) << 8);
-    cursor += 2;
+  if (cursor + len <= receiveLength) {
+    for (int pos = len - 1; pos >= 0; pos--) {
+      result <<= 8;
+      result |= receiveBuffer[cursor + pos] & 0xFF;
+    }
+    cursor += len;
+  }
+  if (neg) {
+    result = -result;
   }
   return result;
 }

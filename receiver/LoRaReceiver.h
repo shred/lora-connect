@@ -61,7 +61,7 @@ public:
 private:
   void onLoRaReceive(size_t packetSize);
   uint16_t readKey();
-  int32_t readInteger();
+  int32_t readInteger(size_t len, bool neg = false);
   String readString();
 
   uint8_t receiveBuffer[128];  // TODO: Find out maximum length of a LoRa package.
@@ -72,7 +72,6 @@ private:
   ReceiveBooleanEvent booleanEventListener;
   ReceiveStringEvent stringEventListener;
   ReceiveSystemMessageEvent systemMessageEventListener;
-
 };
 
 #endif

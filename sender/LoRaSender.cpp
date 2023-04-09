@@ -57,32 +57,52 @@ LoRaSender::LoRaSender() {
 void LoRaSender::sendInt(uint16_t key, int32_t value) {
   Serial.printf("LR: send int %u = %d\n", key, value);
 
-  // TODO: Send different message types for byte, word, long as well as positive/negative
-  if (value < -65535 || value > 65535) {
-    Serial.printf("Numeric field uid %u is out of range (%d)\n", key, value);
+  if (value == 0) {
+    sendMessage(0, key, NULL, 0);
     return;
   }
+
   bool negative = value < 0;
   if (negative) {
     value = -value;
   }
-  uint8_t data[2] = {
+
+  if (value < 256) {
+    uint8_t data[1] = {
+      value & 0xFF
+    };
+    sendMessage(negative ? 2 : 1, key, data, sizeof(data));
+    return;
+  }
+
+  if (value < 65536) {
+    uint8_t data[2] = {
+      value & 0xFF,
+      (value >> 8) & 0xFF
+    };
+    sendMessage(negative ? 4 : 3, key, data, sizeof(data));
+    return;
+  }
+
+  uint8_t data[4] = {
     value & 0xFF,
-    (value >> 8) & 0xFF
+    (value >> 8) & 0xFF,
+    (value >> 16) & 0xFF,
+    (value >> 24) & 0xFF
   };
-  sendMessage(negative ? 1 : 0, key, data, sizeof(data));
+  sendMessage(negative ? 6 : 5, key, data, sizeof(data));
 }
 
 void LoRaSender::sendBoolean(uint16_t key, bool value) {
   Serial.printf("LR: send bool %u = %d\n", key, value);
 
-  sendMessage(value ? 3 : 2, key, NULL, 0);
+  sendMessage(value ? 8 : 7, key, NULL, 0);
 }
 
 void LoRaSender::sendString(uint16_t key, String value) {
   Serial.printf("LR: send string %u = %s\n", key, value);
 
-  sendMessage(4, key, (uint8_t *)value.c_str(), value.length() + 1);
+  sendMessage(9, key, (uint8_t *)value.c_str(), value.length() + 1);
 }
 
 void LoRaSender::sendSystemMessage(String message) {
