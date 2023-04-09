@@ -95,66 +95,72 @@ LoRaReceiver::LoRaReceiver(const char *base64key) {
     throw std::invalid_argument("Invalid key");
   }
 
-  receiverQueue = new cppQueue(sizeof(Payload), PAYLOAD_BUFFER_SIZE);
+  receiverQueue = new cppQueue(sizeof(Encrypted), PAYLOAD_BUFFER_SIZE);
+  messageQueue = new cppQueue(sizeof(Payload), PAYLOAD_BUFFER_SIZE);
 
   lastMessageNumber = 0;
 }
 
 LoRaReceiver::~LoRaReceiver() {
+  delete messageQueue;
   delete receiverQueue;
 }
 
-void LoRaReceiver::onReceiveInt(ReceiveIntEvent intEventListener) {
-  this->intEventListener = intEventListener;
+void LoRaReceiver::connect() {
+  LoRa.setTxPower(LORA_POWER, (LORA_PABOOST == true ? RF_PACONFIG_PASELECT_PABOOST : RF_PACONFIG_PASELECT_RFO));
+  LoRa.receive();
+  yield();
 }
 
-void LoRaReceiver::onReceiveBoolean(ReceiveBooleanEvent booleanEventListener) {
-  this->booleanEventListener = booleanEventListener;
+void LoRaReceiver::loop() {
+  Encrypted receivedMessage;
+  if (receiverQueue->pop(&receivedMessage)) {
+    processMessage(receivedMessage);
+  }
+  yield();
+
+  Payload receivedPayload;
+  if (messageQueue->pop(&receivedPayload)) {
+    processPayload(receivedPayload);
+  }
+  yield();
 }
 
-void LoRaReceiver::onReceiveString(ReceiveStringEvent stringEventListener) {
-  this->stringEventListener = stringEventListener;
-}
-
-void LoRaReceiver::onReceiveSystemMessage(ReceiveSystemMessageEvent systemMessageEventListener) {
-  this->systemMessageEventListener = systemMessageEventListener;
-}
-
-void LoRaReceiver::onLoRaReceive(size_t packetSize) {
-  if (packetSize == 0) {
-    Serial.println("LR: Empty message, ignoring");
+void LoRaReceiver::onLoRaReceive(int packetSize) {
+  if (packetSize == 0 || packetSize > sizeof(Payload) || packetSize % 16 != 0) {
+    Serial.printf("LRC: Unexpected message length %u, ignoring\n", packetSize);
     return;
   }
 
-  if (packetSize > sizeof(Payload) || packetSize % 16 != 0) {
-    Serial.printf("LR: Unexpected message length %u, ignoring\n", packetSize);
-    return;
-  }
+  Encrypted cryptBuffer;
+  cryptBuffer.length = packetSize;
 
-  uint8_t cryptBuffer[packetSize];
   size_t receiveLength = 0;
-  while (LoRa.available()) {
-    if (receiveLength > sizeof(cryptBuffer)) {
-      Serial.println("LR: Message exceeds buffer, ignoring");
-      return;
-    }
-    cryptBuffer[receiveLength++] = (uint8_t)LoRa.read();
+  while (LoRa.available() && receiveLength < sizeof(cryptBuffer.payload)) {
+    cryptBuffer.payload[receiveLength++] = (uint8_t)LoRa.read();
   }
-
-  if (receiveLength != sizeof(cryptBuffer)) {
-    Serial.printf("LR: Expected message length was %u, but is %u\n", sizeof(cryptBuffer), receiveLength);
+  if (receiveLength != packetSize) {
+    Serial.printf("LRC: Expected message length was %u, but is %u\n", packetSize, receiveLength);
     return;
   }
 
+  if (receiverQueue->push(&cryptBuffer)) {
+    Serial.printf("LRC: Received message, length %u\n", packetSize);
+  } else {
+    Serial.println("LRC: Queue is full, payload dropped!");
+  }
+}
+
+void LoRaReceiver::processMessage(Encrypted &cryptBuffer) {
   Serial.println("LR: == RECEIVED ==");
-  printBytes(cryptBuffer, receiveLength);
+  printBytes(cryptBuffer.payload, cryptBuffer.length);
 
   // Decrypt
   Payload payload;
   uint8_t *clearBuffer = (uint8_t *)&payload;
   size_t blockSize = aesEncrypt.blockSize();
-  for (int ix = 0; ix < sizeof(cryptBuffer); ix += blockSize) {
-    aesDecrypt.decryptBlock(clearBuffer + ix, cryptBuffer + ix);
+  for (int ix = 0; ix < cryptBuffer.length; ix += blockSize) {
+    aesDecrypt.decryptBlock(clearBuffer + ix, cryptBuffer.payload + ix);
   }
 
   Serial.println("LR: Decrypted");
@@ -162,7 +168,7 @@ void LoRaReceiver::onLoRaReceive(size_t packetSize) {
 
   uint8_t ourHash[sizeof(payload.hash)];
   hmacSha256.resetHMAC(mackey, sizeof(mackey));
-  hmacSha256.update(((uint8_t *)&payload) + sizeof(payload.hash), receiveLength - sizeof(payload.hash));
+  hmacSha256.update(((uint8_t *)&payload) + sizeof(payload.hash), cryptBuffer.length - sizeof(payload.hash));
   hmacSha256.finalizeHMAC(mackey, sizeof(mackey), ourHash, sizeof(ourHash));
 
   if (0 != memcmp(payload.hash, ourHash, sizeof(ourHash))) {
@@ -190,25 +196,21 @@ void LoRaReceiver::onLoRaReceive(size_t packetSize) {
   Serial.println("LR: Ack encrypted");
   printBytes((uint8_t *)&ackEncrypted, sizeof(acknowledge));
 
+  if (payload.number != lastMessageNumber) {
+    lastMessageNumber = payload.number;
+    if (!messageQueue->push(&payload)) {
+      Serial.println("LR: Payload queue is full, payload dropped!");
+    }
+  } else {
+    Serial.println("LR: Message already received, maybe ACK was lost, ignoring");
+  }
+
   yield();
-  delay(100);
   LoRa.beginPacket();
-  LoRa.setTxPower(LORA_POWER, (LORA_PABOOST == true ? RF_PACONFIG_PASELECT_PABOOST : RF_PACONFIG_PASELECT_RFO));
   LoRa.write(ackEncrypted, sizeof(ackEncrypted));
   LoRa.endPacket();
-  LoRa.flush();
+  LoRa.receive();
   yield();
-
-  if (payload.number == lastMessageNumber) {
-    Serial.println("LR: Message already received, maybe ACK was lost, ignoring");
-    return;
-  }
-
-  lastMessageNumber = payload.number;
-
-  if (!receiverQueue->push(&payload)) {
-    Serial.println("LR: Queue is full, payload dropped!");
-  }
 }
 
 void LoRaReceiver::processPayload(Payload &payload) {
@@ -291,20 +293,22 @@ void LoRaReceiver::processPayload(Payload &payload) {
         Serial.printf("LR: Unknown message type %u, ignoring rest of message\n", type);
         return;
     }
+    yield();
   }
 }
 
-void LoRaReceiver::loop() {
-  // Process a received LoRa message
-  int packetSize = LoRa.parsePacket();
-  yield();
-  if (packetSize) {
-    onLoRaReceive(packetSize);
-  }
+void LoRaReceiver::onReceiveInt(ReceiveIntEvent intEventListener) {
+  this->intEventListener = intEventListener;
+}
 
-  // Fetch a payload from queue
-  Payload receivedPayload;
-  if (receiverQueue->pop(&receivedPayload)) {
-    processPayload(receivedPayload);
-  }
+void LoRaReceiver::onReceiveBoolean(ReceiveBooleanEvent booleanEventListener) {
+  this->booleanEventListener = booleanEventListener;
+}
+
+void LoRaReceiver::onReceiveString(ReceiveStringEvent stringEventListener) {
+  this->stringEventListener = stringEventListener;
+}
+
+void LoRaReceiver::onReceiveSystemMessage(ReceiveSystemMessageEvent systemMessageEventListener) {
+  this->systemMessageEventListener = systemMessageEventListener;
 }

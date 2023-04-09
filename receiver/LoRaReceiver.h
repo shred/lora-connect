@@ -42,6 +42,11 @@ typedef struct payload {
 } Payload;
 static_assert(sizeof(struct payload) == MAX_PAYLOAD_SIZE, "payload structure does not have expected size");
 
+typedef struct encrypted {
+  uint8_t payload[sizeof(Payload)];
+  size_t length;
+} Encrypted;
+
 typedef struct acknowledge {
   uint8_t hash[4];  // MUST be the first element!
   uint16_t number;
@@ -70,6 +75,11 @@ public:
   ~LoRaReceiver();
 
   /**
+   * Start LoRa connection after everything is set up.
+   */
+  void connect();
+
+  /**
    * Callback when an integer was received.
    */
   void onReceiveInt(ReceiveIntEvent intEventListener);
@@ -94,8 +104,15 @@ public:
    */
   void loop();
 
+  /**
+   * This callback is invoked when LoRa receives a message. It might
+   * be called from a different thread or interrupt handler, so be
+   * careful and as fast as possible.
+   */
+  void onLoRaReceive(int packetSize);
+
 private:
-  void onLoRaReceive(size_t packetSize);
+  void processMessage(Encrypted &payload);
   void processPayload(Payload &payload);
 
   uint16_t lastMessageNumber;
@@ -112,6 +129,7 @@ private:
   ReceiveSystemMessageEvent systemMessageEventListener;
 
   cppQueue *receiverQueue;
+  cppQueue *messageQueue;
 };
 
 #endif

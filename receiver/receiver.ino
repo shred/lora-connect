@@ -122,6 +122,10 @@ void postToMqtt(DynamicJsonDocument &doc) {
   }
 }
 
+void onLoRaReceive(int packetSize) {
+  lora.onLoRaReceive(packetSize);
+}
+
 void setup() {
   Heltec.begin(
     true,          // display is enabled
@@ -148,6 +152,11 @@ void setup() {
   lora.onReceiveBoolean(onReceiveBoolean);
   lora.onReceiveString(onReceiveString);
   lora.onReceiveSystemMessage(onReceiveSystemMessage);
+
+  // TODO: I would love to have this in the connect method of the LoRaReceiver class,
+  // but I am too stupid to register an object based callback with LoRa.onReceive() there.
+  LoRa.onReceive(onLoRaReceive);
+  lora.connect();
 }
 
 void loop() {
