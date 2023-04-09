@@ -149,6 +149,10 @@ void LoRaSender::flush() {
   lastFlush = millis();
 }
 
+void LoRaSender::sleep() {
+  LoRa.idle();
+}
+
 void LoRaSender::sendRaw(uint8_t *msg, size_t length) {
   // Make sure not to send more often than once per second
   unsigned long now = millis();

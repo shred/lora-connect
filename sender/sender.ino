@@ -121,6 +121,7 @@ void WiFiApDisconnected(WiFiEvent_t event, WiFiEventInfo_t info) {
   if (deviceConnected && deviceAid == info.wifi_ap_stadisconnected.aid) {
     deviceConnected = false;
     apGate = false;
+    lora.sleep();
     Serial.printf("Appliance disconnected, AID %u\n", deviceAid);
   }
 }

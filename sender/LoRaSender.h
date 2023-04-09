@@ -56,6 +56,11 @@ public:
   void flush();
 
   /**
+   * Go to sleep, there are no messages expected to be sent.
+   */
+  void sleep();
+
+  /**
    * Invoked in main loop.
    */
   void loop();
