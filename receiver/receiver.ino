@@ -38,7 +38,7 @@ inline static unsigned long timeDifference(unsigned long now, unsigned long past
 }
 
 void onReceiveInt(uint16_t key, int32_t value) {
-  Serial.printf("LR: RECEIVED int  %u = %d\n", key, value);
+  Serial.printf("LR: RECEIVED int %u = %d\n", key, value);
 
   DynamicJsonDocument doc(1024);
   String keyStr = mapKey(key);
@@ -83,7 +83,7 @@ void onReceiveBoolean(uint16_t key, bool value) {
 }
 
 void onReceiveString(uint16_t key, String value) {
-  Serial.printf("LR: RECEIVED str  %u = %s\n", key, value);
+  Serial.printf("LR: RECEIVED str %u = '%s'\n", key, value.c_str());
 
   DynamicJsonDocument doc(1024);
   doc["key"] = mapKey(key);
@@ -93,7 +93,7 @@ void onReceiveString(uint16_t key, String value) {
 }
 
 void onReceiveSystemMessage(String value) {
-  Serial.printf("LR: RECEIVED system message %s\n", value);
+  Serial.printf("LR: RECEIVED system message '%s'\n", value.c_str());
 
   DynamicJsonDocument doc(1024);
   doc["systemMessage"] = value;

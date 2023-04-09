@@ -150,7 +150,7 @@ void setup() {
   WiFi.onEvent(WiFiApDisconnected, WiFiEvent_t::ARDUINO_EVENT_WIFI_AP_STADISCONNECTED);
   WiFi.onEvent(WiFiApIpAssigned, WiFiEvent_t::ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED);
 
-  lora.sendSystemMessage("Boot Complete");
+  lora.sendSystemMessage("Ready");
 }
 
 void loop() {

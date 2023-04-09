@@ -181,6 +181,7 @@ void LoRaReceiver::onLoRaReceive(size_t packetSize) {
             intEventListener(key, 0);
           }
         }
+        break;
 
       case 1:  // uint8_t positive
       case 2:  // uint8_t negative

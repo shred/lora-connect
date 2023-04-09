@@ -128,20 +128,21 @@ void LoRaSender::sendBoolean(uint16_t key, bool value) {
 }
 
 void LoRaSender::sendString(uint16_t key, String value) {
-  Serial.printf("LR: send string %u = %s\n", key, value);
+  Serial.printf("LR: send string %u = '%s'\n", key, value.c_str());
 
   sendMessage(9, key, (uint8_t *)value.c_str(), value.length() + 1);
 }
 
 void LoRaSender::sendSystemMessage(String message) {
-  Serial.printf("LR: send system msg %s\n", message);
+  Serial.printf("LR: send system msg '%s'\n", message.c_str());
 
   size_t length = message.length() + 1;
   if (payloadBuffer.length + 1 + length > sizeof(payloadBuffer.data)) {
     flush();
   }
   if (payloadBuffer.length + 1 + length > sizeof(payloadBuffer.data)) {
-    Serial.printf("LR: System Message '%s' is too big and was dropped.", message);
+    Serial.printf("LR: System Message '%s' is too big and was dropped.\n", message);
+    return;
   }
 
   payloadBuffer.data[payloadBuffer.length++] = 255;
@@ -156,7 +157,8 @@ void LoRaSender::sendMessage(uint8_t type, uint16_t key, uint8_t *msg, size_t le
     flush();
   }
   if (payloadBuffer.length + 3 + length > sizeof(payloadBuffer.data)) {
-    Serial.printf("LR: Message type %u, key %u, size %u is too big and was dropped.", type, key, length);
+    Serial.printf("LR: Message type %u, key %u, size %u is too big and was dropped.\n", type, key, length);
+    return;
   }
 
   payloadBuffer.data[payloadBuffer.length++] = type;
