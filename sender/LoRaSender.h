@@ -67,6 +67,11 @@ public:
   ~LoRaSender();
 
   /**
+   * Start LoRa connection after everything is set up.
+   */
+  void connect();
+
+  /**
    * Send an integer value.
    */
   void sendInt(uint16_t key, int32_t value);
@@ -101,6 +106,13 @@ public:
    */
   void loop();
 
+  /**
+   * This callback is invoked when LoRa receives a message. It might
+   * be called from a different thread or interrupt handler, so be
+   * careful and as fast as possible.
+   */
+  void onLoRaReceive(int packetSize);
+
 private:
   /**
    * Send a raw message.
@@ -109,19 +121,28 @@ private:
 
   void sendRaw(Payload &payload);
 
-  bool checkAcknowledge(uint16_t expectedNumber);
+  void encryptPayload(Payload &sendPayload);
+  void transmitPayload();
+  boolean checkAcknowledge(uint8_t *ackPackage);
 
   Payload payloadBuffer;
 
   cppQueue *senderQueue;
+  cppQueue *acknowledgeQueue;
+
+  bool validEncrypted;
+  uint8_t currentEncrypted[sizeof(Payload)];
+  size_t currentEncryptedLength;
+  uint16_t currentPayloadNumber;
+  unsigned long lastSendTime;
+  unsigned long nextSendDelay;
+  uint8_t attempts;
 
   uint8_t enckey[SHA256::HASH_SIZE];
   uint8_t mackey[SHA256::HASH_SIZE];
   AES256 aesEncrypt;
   AES256 aesDecrypt;
   SHA256 hmacSha256;
-
-  unsigned long lastSent;
 };
 
 #endif

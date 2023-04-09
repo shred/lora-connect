@@ -44,14 +44,9 @@ static void printBytes(uint8_t *data, size_t length) {
 }
 
 
-inline static unsigned long timeDifference(unsigned long now, unsigned long past) {
-  // This is actually safe from millis() overflow because all types are unsigned long!
-  return past > 0 ? (now - past) : 0;
-}
-
 LoRaSender::LoRaSender(const char *base64key) {
-  unsigned long now = millis();
-  lastSent = now;
+  lastSendTime = millis();
+  nextSendDelay = 0;
 
   uint8_t key[32];
   if (!base64UrlDecode(base64key, key, sizeof(key))) {
@@ -75,11 +70,21 @@ LoRaSender::LoRaSender(const char *base64key) {
     throw std::invalid_argument("Invalid key");
   }
 
+  validEncrypted = false;
   senderQueue = new cppQueue(sizeof(Payload), PAYLOAD_BUFFER_SIZE);
+  acknowledgeQueue = new cppQueue(sizeof(Acknowledge), PAYLOAD_BUFFER_SIZE);
 }
 
 LoRaSender::~LoRaSender() {
+  delete acknowledgeQueue;
   delete senderQueue;
+}
+
+void LoRaSender::connect() {
+  LoRa.setTxPower(LORA_POWER, (LORA_PABOOST == true ? RF_PACONFIG_PASELECT_PABOOST : RF_PACONFIG_PASELECT_RFO));
+  yield();
+  LoRa.receive();
+  yield();
 }
 
 void LoRaSender::sendInt(uint16_t key, int32_t value) {
@@ -189,34 +194,81 @@ void LoRaSender::sendRaw(Payload &payload) {
   }
 }
 
+void LoRaSender::onLoRaReceive(int packetSize) {
+  if (packetSize != sizeof(Acknowledge)) {
+    Serial.printf("LRC: Unexpected message length %u, ignoring\n", packetSize);
+    return;
+  }
+
+  uint8_t cryptBuffer[sizeof(Acknowledge)];
+
+  size_t receiveLength = 0;
+  while (LoRa.available() && receiveLength < sizeof(cryptBuffer)) {
+    cryptBuffer[receiveLength++] = (uint8_t)LoRa.read();
+  }
+  if (receiveLength != packetSize) {
+    Serial.printf("LRC: Expected message length was %u, but is %u\n", packetSize, receiveLength);
+    return;
+  }
+
+  if (acknowledgeQueue->push(&cryptBuffer)) {
+    Serial.printf("LRC: Received acknowledge message, length %u\n", packetSize);
+  } else {
+    Serial.println("LRC: Queue is full, payload dropped!");
+  }
+}
+
 void LoRaSender::loop() {
-  // Make sure to stay within the permitted duty cycle!
-  unsigned long lastSentDiff = timeDifference(millis(), lastSent);
-  if (lastSentDiff < LORA_PACKAGE_RATE_LIMIT) {
-    return;
+  if (validEncrypted) {
+    // Check if we got an acknowledge already?
+    uint8_t ackPackage[sizeof(Acknowledge)];
+    if (acknowledgeQueue->pop(ackPackage)) {
+      if (checkAcknowledge(ackPackage)) {
+        validEncrypted = false;
+      }
+    }
   }
+  yield();
 
-  // Fetch payload from queue
-  Payload sendPayload;
-  if (!senderQueue->pop(&sendPayload)) {
-    // Queue is empty
-    return;
+  if (validEncrypted) {
+    if ((millis() - lastSendTime) > nextSendDelay) {
+      attempts++;
+      if (attempts <= 3) {
+        Serial.printf("LR: Sending package, attempt %u\n", attempts);
+        transmitPayload();
+        lastSendTime = millis();
+        nextSendDelay = LORA_PACKAGE_RATE_LIMIT + random(100);
+      } else {
+        Serial.println("LR: Maximum number of reattempts reached, maybe the receiver is offline.");
+        validEncrypted = false;
+      }
+    }
   }
+  yield();
 
-  if (sendPayload.length == 0) {
-    // Payload is empty
-    return;
+  if (!validEncrypted) {
+    // No message there, take and encrypt one
+    Payload sendPayload;
+    if (senderQueue->pop(&sendPayload)) {
+      encryptPayload(sendPayload);
+      attempts = 0;
+      validEncrypted = true;
+    }
   }
+  yield();
+}
 
+void LoRaSender::encryptPayload(Payload &sendPayload) {
   // Reduce package to minimum required length
   size_t grossPayloadLength = sendPayload.length
                               + sizeof(sendPayload.hash)
                               + sizeof(sendPayload.number)
                               + sizeof(sendPayload.length);
-  size_t actualPayloadLength = (grossPayloadLength + 15) / 16 * 16;
+  currentEncryptedLength = (grossPayloadLength + 15) / 16 * 16;
 
   // Give package a random message number
   sendPayload.number = random(65536);
+  currentPayloadNumber = sendPayload.number;
 
   // Fill unused payload part with random numbers
   for (int ix = sendPayload.length; ix < sizeof(sendPayload.data); ix++) {
@@ -227,80 +279,41 @@ void LoRaSender::loop() {
   // We will only use the first bytes of that hash, for space reasons.
   // It is still better than nothing.
   hmacSha256.resetHMAC(mackey, sizeof(mackey));
-  hmacSha256.update(((uint8_t *)&sendPayload) + sizeof(sendPayload.hash), actualPayloadLength - sizeof(sendPayload.hash));
+  hmacSha256.update(((uint8_t *)&sendPayload) + sizeof(sendPayload.hash), currentEncryptedLength - sizeof(sendPayload.hash));
   hmacSha256.finalizeHMAC(mackey, sizeof(mackey), sendPayload.hash, sizeof(sendPayload.hash));
 
   Serial.println("LR: == SENDING ==");
-  printBytes((uint8_t *)&sendPayload, actualPayloadLength);
+  printBytes((uint8_t *)&sendPayload, currentEncryptedLength);
 
   // Encrypt
   // TODO: This is rather weak, use a better mode of operation here!
   const uint8_t *clearBuffer = (const uint8_t *)&sendPayload;
-  uint8_t cryptBuffer[actualPayloadLength];
   size_t blockSize = aesEncrypt.blockSize();
-  for (int ix = 0; ix < sizeof(cryptBuffer); ix += blockSize) {
-    aesEncrypt.encryptBlock(cryptBuffer + ix, clearBuffer + ix);
+  for (int ix = 0; ix < currentEncryptedLength; ix += blockSize) {
+    aesEncrypt.encryptBlock(currentEncrypted + ix, clearBuffer + ix);
   }
-
-  Serial.println("LR: Encrypted");
-  printBytes(cryptBuffer, sizeof(cryptBuffer));
-
-  yield();
-
-  for (int attempt = 1; attempt < 4; attempt++) {
-    Serial.printf("LR: Sending, attempt %u\n", attempt);
-    yield();
-    LoRa.beginPacket();
-    LoRa.setTxPower(LORA_POWER, (LORA_PABOOST == true ? RF_PACONFIG_PASELECT_PABOOST : RF_PACONFIG_PASELECT_RFO));
-    LoRa.write(cryptBuffer, sizeof(cryptBuffer));
-    LoRa.endPacket();
-    LoRa.flush();
-    yield();
-    delay(50);
-
-    lastSent = millis();
-
-    while (timeDifference(millis(), lastSent) < LORA_ACK_TIMEOUT) {
-      // Wait for acknowledge
-      int packetSize = LoRa.parsePacket();
-      yield();
-      if (packetSize == 0) {
-        continue;
-      }
-      Serial.printf("LR: received possible package %u\n", packetSize);
-      if (packetSize == sizeof(Acknowledge)) {
-        bool isAck = checkAcknowledge(sendPayload.number);
-        if (isAck) {
-          return;  // TODO: This is ugly!
-        }
-      }
-    }
-  }
-  Serial.println("LR: Not acknowledged, maybe receiver is offline?");
 }
 
-bool LoRaSender::checkAcknowledge(uint16_t expectedNumber) {
-  uint8_t cryptBuffer[sizeof(Acknowledge)];
+void LoRaSender::transmitPayload() {
+  if (validEncrypted) {
+    Serial.println("LR: == SENDING ==");
+    printBytes(currentEncrypted, currentEncryptedLength);
 
-  size_t receiveLength = 0;
-  while (LoRa.available()) {
-    if (receiveLength > sizeof(cryptBuffer)) {
-      Serial.println("LR: Acknowledge package exceeds buffer, ignoring");
-      return false;
-    }
-    cryptBuffer[receiveLength++] = (uint8_t)LoRa.read();
+    yield();
+    LoRa.beginPacket();
+    LoRa.write(currentEncrypted, currentEncryptedLength);
+    LoRa.endPacket();
+    LoRa.receive();
+    yield();
   }
+}
 
-  if (receiveLength != sizeof(Acknowledge)) {
-    Serial.printf("LR: Expected acknowledge length was %u, but is %u\n", sizeof(Acknowledge), receiveLength);
-    return false;
-  }
-
+bool LoRaSender::checkAcknowledge(uint8_t *ackPackage) {
   Serial.println("LR: ACK Encrypted");
-  printBytes(cryptBuffer, sizeof(cryptBuffer));
+  printBytes(ackPackage, sizeof(Acknowledge));
 
   Acknowledge unencrypted;
-  aesDecrypt.decryptBlock((uint8_t *)&unencrypted, cryptBuffer);
+  aesDecrypt.decryptBlock((uint8_t *)&unencrypted, ackPackage);
 
   Serial.println("LR: ACK Decrypted");
   printBytes((uint8_t *)&unencrypted, sizeof(unencrypted));
@@ -315,7 +328,7 @@ bool LoRaSender::checkAcknowledge(uint16_t expectedNumber) {
     return false;
   }
 
-  if (unencrypted.number != expectedNumber) {
+  if (unencrypted.number != currentPayloadNumber) {
     Serial.println("LR: Bad acknowledge package number");
     return false;
   }
