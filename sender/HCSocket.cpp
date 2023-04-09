@@ -114,11 +114,11 @@ void HCSocket::reconnect() {
 }
 
 void HCSocket::send(const JsonDocument &doc) {
-  #ifdef SOCKET_DEBUG
-    Serial.print("TX: ");
-    serializeJson(doc, Serial);
-    Serial.println();
-  #endif
+#ifdef SOCKET_DEBUG
+  Serial.print("TX: ");
+  serializeJson(doc, Serial);
+  Serial.println();
+#endif
 
   size_t estimatedDocSize = measureJson(doc);
   uint8_t clearMsg[estimatedDocSize + 64];
@@ -151,10 +151,10 @@ void HCSocket::send(const JsonDocument &doc) {
   memcpy(cryptBuffer + messageLen, lastTxHmac, sizeof(lastTxHmac));
 
   size_t encryptedSize = messageLen + sizeof(lastTxHmac);
-  #ifdef SOCKET_DEBUG
-    Serial.println(F("TX: Encrypted"));
-    printBytes(cryptBuffer, encryptedSize);
-  #endif
+#ifdef SOCKET_DEBUG
+  Serial.println(F("TX: Encrypted"));
+  printBytes(cryptBuffer, encryptedSize);
+#endif
   webSocket.sendBIN(cryptBuffer, encryptedSize);
 }
 
@@ -165,10 +165,10 @@ void HCSocket::receive(uint8_t *msg, size_t size) {
     return;
   }
 
-  #ifdef SOCKET_DEBUG
-    Serial.println("RX: Encrypted");
-    printBytes(msg, size);
-  #endif
+#ifdef SOCKET_DEBUG
+  Serial.println("RX: Encrypted");
+  printBytes(msg, size);
+#endif
 
   uint8_t ourMac[sizeof(lastRxHmac)];
   hmacSha256.resetHMAC(mackey, sizeof(mackey));
@@ -178,12 +178,12 @@ void HCSocket::receive(uint8_t *msg, size_t size) {
   hmacSha256.update(msg, size - 16);
   hmacSha256.finalizeHMAC(mackey, sizeof(mackey), ourMac, sizeof(ourMac));
 
-  #ifdef SOCKET_DEBUG
-    Serial.println("RX: Our MAC");
-    printBytes(ourMac, sizeof(ourMac));
-    Serial.println("RX: Their MAC");
-    printBytes(msg + size - 16, sizeof(ourMac));
-  #endif
+#ifdef SOCKET_DEBUG
+  Serial.println("RX: Our MAC");
+  printBytes(ourMac, sizeof(ourMac));
+  Serial.println("RX: Their MAC");
+  printBytes(msg + size - 16, sizeof(ourMac));
+#endif
 
   if (0 != memcmp(msg + size - 16, ourMac, sizeof(ourMac))) {
     Serial.println("RX: Bad HMAC, a message was lost");
@@ -209,10 +209,10 @@ void HCSocket::receive(uint8_t *msg, size_t size) {
     return;
   }
 
-  #ifdef SOCKET_DEBUG
-    Serial.println("RX: Raw message");
-    printBytes(cryptBuffer, decryptedSize);
-  #endif
+#ifdef SOCKET_DEBUG
+  Serial.println("RX: Raw message");
+  printBytes(cryptBuffer, decryptedSize);
+#endif
 
   DynamicJsonDocument doc(decryptedSize * 4);  // Better be generous
 
@@ -222,27 +222,27 @@ void HCSocket::receive(uint8_t *msg, size_t size) {
     return;
   }
 
-  #ifdef SOCKET_DEBUG
-    Serial.println("RX:");
-    serializeJson(doc, Serial);
-    Serial.println();
-  #endif
+#ifdef SOCKET_DEBUG
+  Serial.println("RX:");
+  serializeJson(doc, Serial);
+  Serial.println();
+#endif
 
   eventListener(doc);
 }
 
 void HCSocket::startSession(uint32_t sessionId, uint32_t txMsgId) {
-  #ifdef SOCKET_DEBUG
-    Serial.printf("Starting session, sID=%u, msgID=%u\n", sessionId, txMsgId);
-  #endif
+#ifdef SOCKET_DEBUG
+  Serial.printf("Starting session, sID=%u, msgID=%u\n", sessionId, txMsgId);
+#endif
   this->sessionId = sessionId;
   this->txMsgId = txMsgId;
 }
 
 void HCSocket::sendActionWithData(const char *resource, const JsonDocument &data, const uint16_t version, const char *action) {
-  #ifdef SOCKET_DEBUG
-    Serial.printf("Sending action %s to resource %s\n", action, resource);
-  #endif
+#ifdef SOCKET_DEBUG
+  Serial.printf("Sending action %s to resource %s\n", action, resource);
+#endif
 
   DynamicJsonDocument doc(1024);
   doc["sID"] = sessionId;
@@ -264,9 +264,9 @@ void HCSocket::sendAction(const char *resource, const uint16_t version, const ch
 }
 
 void HCSocket::sendReply(const JsonDocument &query, const JsonDocument &reply) {
-  #ifdef SOCKET_DEBUG
-    Serial.printf("Sending reply to query msgId=%u\n", query["msgID"]);
-  #endif
+#ifdef SOCKET_DEBUG
+  Serial.printf("Sending reply to query msgId=%u\n", query["msgID"]);
+#endif
 
   DynamicJsonDocument doc(1024);
   doc["sID"] = query["sID"];
