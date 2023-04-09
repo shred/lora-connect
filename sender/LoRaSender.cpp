@@ -206,6 +206,10 @@ void LoRaSender::loop() {
     return;
   }
 
+  // Reduce package to minimum required length
+  size_t grossPayloadLength = sendPayload.length + sizeof(sendPayload.number) + sizeof(sendPayload.hash) + sizeof(sendPayload.length);
+  size_t actualPayloadLength = (grossPayloadLength + 15) / 16 * 16;
+
   // Give package a random message number
   sendPayload.number = random(65536);
 
@@ -222,17 +226,17 @@ void LoRaSender::loop() {
   // It is still better than nothing.
   uint8_t hash[sizeof(sendPayload.hash)];
   hmacSha256.resetHMAC(mackey, sizeof(mackey));
-  hmacSha256.update(&sendPayload, sizeof(sendPayload));
+  hmacSha256.update(&sendPayload, actualPayloadLength);
   hmacSha256.finalizeHMAC(mackey, sizeof(mackey), hash, sizeof(hash));
   memcpy(sendPayload.hash, hash, sizeof(sendPayload.hash));
 
   Serial.println("LR: == SENDING ==");
-  printBytes((uint8_t *)&sendPayload, sizeof(sendPayload));
+  printBytes((uint8_t *)&sendPayload, actualPayloadLength);
 
   // Encrypt
   // TODO: This is rather weak, use a better mode of operation here!
   const uint8_t *clearBuffer = (const uint8_t *)&sendPayload;
-  uint8_t cryptBuffer[sizeof(sendPayload)];
+  uint8_t cryptBuffer[actualPayloadLength];
   size_t blockSize = aesEncrypt.blockSize();
   for (int ix = 0; ix < sizeof(cryptBuffer); ix += blockSize) {
     aesEncrypt.encryptBlock(cryptBuffer + ix, clearBuffer + ix);

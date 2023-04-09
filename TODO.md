@@ -6,7 +6,6 @@ This project is still in a prototype state. It does its job, but there are cruci
 
 These are nice-to-have features. Maybe I implement them sometimes later, but they have no priority for me.
 
-* Currently every LoRa package is 48 bytes long, even if the actual payload is much smaller. The packages should be 32 or even 16 bytes long if the payload permits it.
 * The LoRa protocol isn't immune against replay attacks. The receiver should send a nonce with each acknowledge package, and the sender should use that nonce on the next package.
 * The nice OLED display is totally unused at the moment. It would be great if the display would show the current status of the device when the hardware button is pressed.
 

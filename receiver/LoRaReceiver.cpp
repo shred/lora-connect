@@ -84,12 +84,12 @@ void LoRaReceiver::onLoRaReceive(size_t packetSize) {
     return;
   }
 
-  if (packetSize != sizeof(Payload)) {
+  if (packetSize > sizeof(Payload) || packetSize % 16 != 0) {
     Serial.printf("LR: Unexpected message length %u, ignoring\n", packetSize);
     return;
   }
 
-  uint8_t cryptBuffer[sizeof(Payload)];
+  uint8_t cryptBuffer[packetSize];
   size_t receiveLength = 0;
   while (LoRa.available()) {
     if (receiveLength > sizeof(cryptBuffer)) {
@@ -123,7 +123,7 @@ void LoRaReceiver::onLoRaReceive(size_t packetSize) {
 
   uint8_t ourHash[sizeof(payload.hash)];
   hmacSha256.resetHMAC(mackey, sizeof(mackey));
-  hmacSha256.update(&payload, sizeof(payload));
+  hmacSha256.update(&payload, receiveLength);
   hmacSha256.finalizeHMAC(mackey, sizeof(mackey), ourHash, sizeof(ourHash));
 
   if (0 != memcmp(theirHash, ourHash, sizeof(ourHash))) {
