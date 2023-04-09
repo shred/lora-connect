@@ -117,16 +117,12 @@ void LoRaReceiver::onLoRaReceive(size_t packetSize) {
   Serial.println("LR: Decrypted");
   printBytes(clearBuffer, sizeof(payload));
 
-  uint8_t theirHash[sizeof(payload.hash)];
-  memcpy(theirHash, payload.hash, sizeof(theirHash));
-  memset(payload.hash, 0, sizeof(payload.hash));
-
   uint8_t ourHash[sizeof(payload.hash)];
   hmacSha256.resetHMAC(mackey, sizeof(mackey));
-  hmacSha256.update(&payload, receiveLength);
+  hmacSha256.update(((uint8_t *)&payload) + sizeof(payload.hash), receiveLength - sizeof(payload.hash));
   hmacSha256.finalizeHMAC(mackey, sizeof(mackey), ourHash, sizeof(ourHash));
 
-  if (0 != memcmp(theirHash, ourHash, sizeof(ourHash))) {
+  if (0 != memcmp(payload.hash, ourHash, sizeof(ourHash))) {
     Serial.println("LR: Bad HMAC, maybe not our package");
     return;
   }
@@ -134,16 +130,13 @@ void LoRaReceiver::onLoRaReceive(size_t packetSize) {
   // Send Acknowledge
   Acknowledge acknowledge;
   acknowledge.number = payload.number;
-  memset(acknowledge.hash, 0, sizeof(acknowledge.hash));
   for (int ix = 0; ix < sizeof(acknowledge.pad); ix++) {
     acknowledge.pad[ix] = random(256);
   }
 
-  uint8_t ackHash[sizeof(acknowledge.hash)];
   hmacSha256.resetHMAC(mackey, sizeof(mackey));
-  hmacSha256.update(&acknowledge, sizeof(acknowledge));
-  hmacSha256.finalizeHMAC(mackey, sizeof(mackey), ackHash, sizeof(ackHash));
-  memcpy(acknowledge.hash, ackHash, sizeof(acknowledge.hash));
+  hmacSha256.update(((uint8_t *)&acknowledge) + sizeof(acknowledge.hash), sizeof(acknowledge) - sizeof(acknowledge.hash));
+  hmacSha256.finalizeHMAC(mackey, sizeof(mackey), acknowledge.hash, sizeof(acknowledge.hash));
 
   Serial.println("LR: Ack unencrypted");
   printBytes((uint8_t *)&acknowledge, sizeof(acknowledge));

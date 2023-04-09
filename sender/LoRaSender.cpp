@@ -209,14 +209,14 @@ void LoRaSender::loop() {
   }
 
   // Reduce package to minimum required length
-  size_t grossPayloadLength = sendPayload.length + sizeof(sendPayload.number) + sizeof(sendPayload.hash) + sizeof(sendPayload.length);
+  size_t grossPayloadLength = sendPayload.length
+                              + sizeof(sendPayload.hash)
+                              + sizeof(sendPayload.number)
+                              + sizeof(sendPayload.length);
   size_t actualPayloadLength = (grossPayloadLength + 15) / 16 * 16;
 
   // Give package a random message number
   sendPayload.number = random(65536);
-
-  // Clear hash for correct hashing
-  memset(sendPayload.hash, 0, sizeof(sendPayload.hash));
 
   // Fill unused payload part with random numbers
   for (int ix = sendPayload.length; ix < sizeof(sendPayload.data); ix++) {
@@ -226,11 +226,9 @@ void LoRaSender::loop() {
   // Compute hash
   // We will only use the first bytes of that hash, for space reasons.
   // It is still better than nothing.
-  uint8_t hash[sizeof(sendPayload.hash)];
   hmacSha256.resetHMAC(mackey, sizeof(mackey));
-  hmacSha256.update(&sendPayload, actualPayloadLength);
-  hmacSha256.finalizeHMAC(mackey, sizeof(mackey), hash, sizeof(hash));
-  memcpy(sendPayload.hash, hash, sizeof(sendPayload.hash));
+  hmacSha256.update(((uint8_t *)&sendPayload) + sizeof(sendPayload.hash), actualPayloadLength - sizeof(sendPayload.hash));
+  hmacSha256.finalizeHMAC(mackey, sizeof(mackey), sendPayload.hash, sizeof(sendPayload.hash));
 
   Serial.println("LR: == SENDING ==");
   printBytes((uint8_t *)&sendPayload, actualPayloadLength);
@@ -307,16 +305,12 @@ bool LoRaSender::checkAcknowledge(uint16_t expectedNumber) {
   Serial.println("LR: ACK Decrypted");
   printBytes((uint8_t *)&unencrypted, sizeof(unencrypted));
 
-  uint8_t theirHash[sizeof(unencrypted.hash)];
-  memcpy(theirHash, unencrypted.hash, sizeof(theirHash));
-  memset(unencrypted.hash, 0, sizeof(unencrypted.hash));
-
   uint8_t ourHash[sizeof(unencrypted.hash)];
   hmacSha256.resetHMAC(mackey, sizeof(mackey));
-  hmacSha256.update(&unencrypted, sizeof(unencrypted));
+  hmacSha256.update(((uint8_t *)&unencrypted) + sizeof(unencrypted.hash), sizeof(unencrypted) - sizeof(unencrypted.hash));
   hmacSha256.finalizeHMAC(mackey, sizeof(mackey), ourHash, sizeof(ourHash));
 
-  if (0 != memcmp(theirHash, ourHash, sizeof(ourHash))) {
+  if (0 != memcmp(unencrypted.hash, ourHash, sizeof(ourHash))) {
     Serial.println("LR: Bad acknowledge HMAC");
     return false;
   }

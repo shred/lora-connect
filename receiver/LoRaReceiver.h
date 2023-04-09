@@ -31,17 +31,17 @@
 #define MAX_ACK_SIZE 16
 
 typedef struct payload {
+  uint8_t hash[4];  // MUST be the first element!
   uint16_t number;
-  uint8_t hash[4];
   uint8_t length;
-  uint8_t data[MAX_PAYLOAD_SIZE - sizeof(number) - sizeof(hash) - sizeof(length)];
+  uint8_t data[MAX_PAYLOAD_SIZE - sizeof(hash) - sizeof(number) - sizeof(length)];
 } Payload;
 static_assert(sizeof(struct payload) == MAX_PAYLOAD_SIZE, "payload structure does not have expected size");
 
 typedef struct acknowledge {
+  uint8_t hash[4];  // MUST be the first element!
   uint16_t number;
-  uint8_t hash[4];
-  uint8_t pad[MAX_ACK_SIZE - sizeof(number) - sizeof(hash)];
+  uint8_t pad[MAX_ACK_SIZE - sizeof(hash) - sizeof(number)];
 } Acknowledge;
 static_assert(sizeof(struct acknowledge) == MAX_ACK_SIZE, "acknowledge structure does not have expected size");
 
