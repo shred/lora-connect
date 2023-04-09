@@ -21,6 +21,7 @@
 #include <AES.h>
 #include <Arduino.h>
 #include <assert.h>
+#include <cppQueue.h>
 #include <SHA256.h>
 
 // Must be a multiple of 16. In the European Union, the maximum permitted LoRa
@@ -29,6 +30,9 @@
 
 // Size of the acknowledge package, must be a multiple of 16.
 #define MAX_ACK_SIZE 16
+
+// Maximum number of payloads to keep in the buffer.
+#define PAYLOAD_BUFFER_SIZE 32
 
 typedef struct payload {
   uint8_t hash[4];  // MUST be the first element!
@@ -61,6 +65,11 @@ public:
   LoRaReceiver(const char *base64key);
 
   /**
+   * Destructor.
+   */
+  ~LoRaReceiver();
+
+  /**
    * Callback when an integer was received.
    */
   void onReceiveInt(ReceiveIntEvent intEventListener);
@@ -87,12 +96,8 @@ public:
 
 private:
   void onLoRaReceive(size_t packetSize);
-  uint16_t readKey();
-  int32_t readInteger(size_t len, bool neg = false);
-  String readString();
+  void processPayload(Payload &payload);
 
-  Payload payload;
-  uint8_t cursor;
   uint16_t lastMessageNumber;
 
   uint8_t enckey[SHA256::HASH_SIZE];
@@ -105,6 +110,8 @@ private:
   ReceiveBooleanEvent booleanEventListener;
   ReceiveStringEvent stringEventListener;
   ReceiveSystemMessageEvent systemMessageEventListener;
+
+  cppQueue *receiverQueue;
 };
 
 #endif

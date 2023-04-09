@@ -36,6 +36,42 @@ static void printBytes(uint8_t *data, size_t length) {
   Serial.println();
 }
 
+static uint16_t readKey(Payload &payload, uint8_t &cursor) {
+  uint16_t result = 0;
+  if (cursor + 2 <= payload.length) {
+    result = (payload.data[cursor] & 0xFF) | ((payload.data[cursor + 1] & 0xFF) << 8);
+    cursor += 2;
+  }
+  return result;
+}
+
+static int32_t readInteger(Payload &payload, uint8_t &cursor, size_t len, bool neg) {
+  int32_t result = 0;
+  if (cursor + len <= payload.length) {
+    for (int pos = len - 1; pos >= 0; pos--) {
+      result <<= 8;
+      result |= payload.data[cursor + pos] & 0xFF;
+    }
+    cursor += len;
+  }
+  if (neg) {
+    result = -result;
+  }
+  return result;
+}
+
+static String readString(Payload &payload, uint8_t &cursor) {
+  size_t strlen = 0;
+  uint8_t *start = payload.data + cursor;
+  while (payload.data[cursor] != 0 && cursor < payload.length) {
+    strlen++;
+    cursor++;
+  }
+  cursor++;  // Also skip null terminator
+  return String(start, strlen);
+}
+
+
 LoRaReceiver::LoRaReceiver(const char *base64key) {
   uint8_t key[32];
   if (!base64UrlDecode(base64key, key, sizeof(key))) {
@@ -59,7 +95,13 @@ LoRaReceiver::LoRaReceiver(const char *base64key) {
     throw std::invalid_argument("Invalid key");
   }
 
+  receiverQueue = new cppQueue(sizeof(Payload), PAYLOAD_BUFFER_SIZE);
+
   lastMessageNumber = 0;
+}
+
+LoRaReceiver::~LoRaReceiver() {
+  delete receiverQueue;
 }
 
 void LoRaReceiver::onReceiveInt(ReceiveIntEvent intEventListener) {
@@ -108,6 +150,7 @@ void LoRaReceiver::onLoRaReceive(size_t packetSize) {
   printBytes(cryptBuffer, receiveLength);
 
   // Decrypt
+  Payload payload;
   uint8_t *clearBuffer = (uint8_t *)&payload;
   size_t blockSize = aesEncrypt.blockSize();
   for (int ix = 0; ix < sizeof(cryptBuffer); ix += blockSize) {
@@ -163,13 +206,19 @@ void LoRaReceiver::onLoRaReceive(size_t packetSize) {
 
   lastMessageNumber = payload.number;
 
-  cursor = 0;
+  if (!receiverQueue->push(&payload)) {
+    Serial.println("LR: Queue is full, payload dropped!");
+  }
+}
+
+void LoRaReceiver::processPayload(Payload &payload) {
+  uint8_t cursor = 0;
   while (cursor < payload.length) {
     uint8_t type = payload.data[cursor++];
     switch (type) {
       case 0:  // int, constant zero
         {
-          uint16_t key = readKey();
+          uint16_t key = readKey(payload, cursor);
           if (intEventListener) {
             intEventListener(key, 0);
           }
@@ -179,8 +228,8 @@ void LoRaReceiver::onLoRaReceive(size_t packetSize) {
       case 1:  // uint8_t positive
       case 2:  // uint8_t negative
         {
-          uint16_t key = readKey();
-          int32_t value = readInteger(1, type == 2);
+          uint16_t key = readKey(payload, cursor);
+          int32_t value = readInteger(payload, cursor, 1, type == 2);
           if (intEventListener) {
             intEventListener(key, value);
           }
@@ -190,8 +239,8 @@ void LoRaReceiver::onLoRaReceive(size_t packetSize) {
       case 3:  // uint16_t positive
       case 4:  // uint16_t negative
         {
-          uint16_t key = readKey();
-          int32_t value = readInteger(2, type == 4);
+          uint16_t key = readKey(payload, cursor);
+          int32_t value = readInteger(payload, cursor, 2, type == 4);
           if (intEventListener) {
             intEventListener(key, value);
           }
@@ -201,8 +250,8 @@ void LoRaReceiver::onLoRaReceive(size_t packetSize) {
       case 5:  // uint32_t positive
       case 6:  // uint32_t negative
         {
-          uint16_t key = readKey();
-          int32_t value = readInteger(4, type == 6);
+          uint16_t key = readKey(payload, cursor);
+          int32_t value = readInteger(payload, cursor, 4, type == 6);
           if (intEventListener) {
             intEventListener(key, value);
           }
@@ -212,7 +261,7 @@ void LoRaReceiver::onLoRaReceive(size_t packetSize) {
       case 7:  // boolean "false"
       case 8:  // boolean "true"
         {
-          uint16_t key = readKey();
+          uint16_t key = readKey(payload, cursor);
           if (booleanEventListener) {
             booleanEventListener(key, type == 8);
           }
@@ -221,8 +270,8 @@ void LoRaReceiver::onLoRaReceive(size_t packetSize) {
 
       case 9:  // String
         {
-          uint16_t key = readKey();
-          String str = readString();
+          uint16_t key = readKey(payload, cursor);
+          String str = readString(payload, cursor);
           if (stringEventListener) {
             stringEventListener(key, str);
           }
@@ -231,7 +280,7 @@ void LoRaReceiver::onLoRaReceive(size_t packetSize) {
 
       case 255:  // System message
         {
-          String str = readString();
+          String str = readString(payload, cursor);
           if (systemMessageEventListener) {
             systemMessageEventListener(str);
           }
@@ -245,45 +294,17 @@ void LoRaReceiver::onLoRaReceive(size_t packetSize) {
   }
 }
 
-uint16_t LoRaReceiver::readKey() {
-  uint16_t result = 0;
-  if (cursor + 2 <= payload.length) {
-    result = (payload.data[cursor] & 0xFF) | ((payload.data[cursor + 1] & 0xFF) << 8);
-    cursor += 2;
-  }
-  return result;
-}
-
-int32_t LoRaReceiver::readInteger(size_t len, bool neg) {
-  int32_t result = 0;
-  if (cursor + len <= payload.length) {
-    for (int pos = len - 1; pos >= 0; pos--) {
-      result <<= 8;
-      result |= payload.data[cursor + pos] & 0xFF;
-    }
-    cursor += len;
-  }
-  if (neg) {
-    result = -result;
-  }
-  return result;
-}
-
-String LoRaReceiver::readString() {
-  size_t strlen = 0;
-  uint8_t *start = payload.data + cursor;
-  while (payload.data[cursor] != 0 && cursor < payload.length) {
-    strlen++;
-    cursor++;
-  }
-  cursor++;  // Also skip null terminator
-  return String(start, strlen);
-}
-
 void LoRaReceiver::loop() {
+  // Process a received LoRa message
   int packetSize = LoRa.parsePacket();
   yield();
   if (packetSize) {
     onLoRaReceive(packetSize);
+  }
+
+  // Fetch a payload from queue
+  Payload receivedPayload;
+  if (receiverQueue->pop(&receivedPayload)) {
+    processPayload(receivedPayload);
   }
 }
