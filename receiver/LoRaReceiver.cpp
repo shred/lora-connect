@@ -156,6 +156,7 @@ String LoRaReceiver::readString() {
     strlen++;
     cursor++;
   }
+  cursor++;  // Also skip null terminator
   return String(start, strlen);
 }
 
