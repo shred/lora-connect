@@ -52,9 +52,11 @@ void WiFiApConnected(WiFiEvent_t event, WiFiEventInfo_t info) {
     deviceAid = info.wifi_ap_staconnected.aid;
     apGate = true;
     Serial.println("Appliance is connected");
+    lora.sendSystemMessage("Appliance connected");
   } else {
     apGate = false;
     Serial.println("Ignored unregistered device");
+    lora.sendSystemMessage("Unknown device connected");
   }
 }
 
@@ -115,6 +117,7 @@ void WiFiApIpAssigned(WiFiEvent_t event, WiFiEventInfo_t info) {
     apGate = false;
     Serial.printf("Assigned IP %s to AID %u\n", deviceIp.toString(), deviceAid);
     socket.connect(deviceIp, 80);
+    lora.sendSystemMessage("Appliance IP " + deviceIp.toString());
   }
 }
 
@@ -122,8 +125,9 @@ void WiFiApDisconnected(WiFiEvent_t event, WiFiEventInfo_t info) {
   if (deviceConnected && deviceAid == info.wifi_ap_stadisconnected.aid) {
     deviceConnected = false;
     apGate = false;
-    lora.sleep();
+    lora.sendSystemMessage("Appliance disconnected");
     Serial.printf("Appliance disconnected, AID %u\n", deviceAid);
+    lora.sleep();
   }
 }
 
