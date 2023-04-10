@@ -49,11 +49,9 @@ void onReceiveInt(uint16_t key, int32_t value) {
   if (mapped.length() > 0) {
     doc["exp"] = mapped;
   } else if (keyStr == F("BSH.Common.Root.SelectedProgram")
-             || keyStr == F("BSH.Common.Root.ActiveProgram")) {
-    String mappedProgram = mapKey(value);
-    if (mappedProgram.length() > 0) {
-      doc["exp"] = mappedProgram;
-    }
+             || keyStr == F("BSH.Common.Root.ActiveProgram")
+             || keyStr == F("LaundryCare.Common.Option.ReferToProgram")) {
+    doc["exp"] = mapKey(value);
   } else if (keyStr == F("BSH.Common.Option.RemainingProgramTime")
              || keyStr == F("BSH.Common.Option.EstimatedTotalProgramTime")
              || keyStr == F("BSH.Common.Option.FinishInRelative")) {
@@ -64,7 +62,7 @@ void onReceiveInt(uint16_t key, int32_t value) {
     doc["exp"] = String(buff);
   } else if (keyStr == F("BSH.Common.Option.ProgramProgress")) {
     char buff[30];
-    snprintf(buff, sizeof(buff), "%2d%%", value);
+    snprintf(buff, sizeof(buff), "%d%%", value);
     doc["exp"] = String(buff);
   }
 
