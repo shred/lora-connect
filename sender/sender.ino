@@ -60,6 +60,27 @@ void WiFiApConnected(WiFiEvent_t event, WiFiEventInfo_t info) {
   }
 }
 
+void WiFiApIpAssigned(WiFiEvent_t event, WiFiEventInfo_t info) {
+  if (apGate) {
+    deviceIp = IPAddress(info.wifi_ap_staipassigned.ip.addr);
+    deviceConnected = true;
+    apGate = false;
+    Serial.printf("Assigned IP %s to AID %u\n", deviceIp.toString(), deviceAid);
+    socket.connect(deviceIp, 80);
+    lora.sendSystemMessage("Appliance IP " + deviceIp.toString());
+  }
+}
+
+void WiFiApDisconnected(WiFiEvent_t event, WiFiEventInfo_t info) {
+  if (deviceConnected && deviceAid == info.wifi_ap_stadisconnected.aid) {
+    deviceConnected = false;
+    apGate = false;
+    lora.sendSystemMessage("Appliance disconnected");
+    Serial.printf("Appliance disconnected, AID %u\n", deviceAid);
+    lora.sleep();
+  }
+}
+
 void processMessage(const JsonDocument &msg) {
   Serial.println("Received an event");
   serializeJson(msg, Serial);
@@ -107,27 +128,6 @@ void processMessage(const JsonDocument &msg) {
   } else if (msg["action"] == "RESPONSE" && msg["resource"] == "/ni/info") {
     socket.sendAction("/ei/deviceReady", 2, "NOTIFY");
     socket.sendAction("/ro/allMandatoryValues");
-  }
-}
-
-void WiFiApIpAssigned(WiFiEvent_t event, WiFiEventInfo_t info) {
-  if (apGate) {
-    deviceIp = IPAddress(info.wifi_ap_staipassigned.ip.addr);
-    deviceConnected = true;
-    apGate = false;
-    Serial.printf("Assigned IP %s to AID %u\n", deviceIp.toString(), deviceAid);
-    socket.connect(deviceIp, 80);
-    lora.sendSystemMessage("Appliance IP " + deviceIp.toString());
-  }
-}
-
-void WiFiApDisconnected(WiFiEvent_t event, WiFiEventInfo_t info) {
-  if (deviceConnected && deviceAid == info.wifi_ap_stadisconnected.aid) {
-    deviceConnected = false;
-    apGate = false;
-    lora.sendSystemMessage("Appliance disconnected");
-    Serial.printf("Appliance disconnected, AID %u\n", deviceAid);
-    lora.sleep();
   }
 }
 
