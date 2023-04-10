@@ -81,6 +81,8 @@ The MQTT messages are JSON formatted and consist of these keys:
 If a system message is received from the remote sender, the MQTT message consist this key only:
 
 * `systemMessage`: System message string that was received.
+* `loraSignalStrength`: RSSI of the LoRa connection to the sender.
+* `wifiSignalStrength`: RSSI of your local WLAN.
 
 # Open Source
 
