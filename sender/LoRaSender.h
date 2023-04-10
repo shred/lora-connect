@@ -106,21 +106,11 @@ public:
    */
   void loop();
 
-  /**
-   * This callback is invoked when LoRa receives a message. It might
-   * be called from a different thread or interrupt handler, so be
-   * careful and as fast as possible.
-   */
-  void onLoRaReceive(int packetSize);
 
 private:
-  /**
-   * Send a raw message.
-   */
   void sendMessage(uint8_t type, uint16_t key, uint8_t *msg, size_t length);
-
   void sendRaw(Payload &payload);
-
+  void onLoRaReceive(int packetSize);
   void encryptPayload(Payload &sendPayload);
   void transmitPayload();
   boolean checkAcknowledge(uint8_t *ackPackage);

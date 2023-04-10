@@ -17,12 +17,23 @@
 
 #include <Arduino.h>
 #include <cppQueue.h>
-#include <heltec.h>
+#include <LoRa.h>
+#include <SPI.h>
 
 #include "base64url.h"
 #include "LoRaSender.h"
 
 #include "config.h"
+
+// pins of the Heltec LoRa32 V2 transceiver module
+#define LORA_SCK 5
+#define LORA_MISO 19
+#define LORA_MOSI 27
+#define LORA_CS 18
+#define LORA_RST 14
+#define LORA_DIO0 26
+#define LORA_DIO1 35
+#define LORA_DIO2 34
 
 #define LORA_PACKAGE_RATE_LIMIT 1000
 #define LORA_ACK_TIMEOUT 1000
@@ -45,6 +56,9 @@ static void printBytes(uint8_t *data, size_t length) {
 
 
 LoRaSender::LoRaSender(const char *base64key) {
+  SPI.begin(LORA_SCK, LORA_MISO, LORA_MOSI, LORA_CS);
+  LoRa.setPins(LORA_CS, LORA_RST, LORA_DIO0);
+
   lastSendTime = millis();
   nextSendDelay = 0;
 
@@ -76,15 +90,22 @@ LoRaSender::LoRaSender(const char *base64key) {
 }
 
 LoRaSender::~LoRaSender() {
+  LoRa.end();
   delete acknowledgeQueue;
   delete senderQueue;
 }
 
 void LoRaSender::connect() {
-  LoRa.setTxPower(LORA_POWER, (LORA_PABOOST == true ? RF_PACONFIG_PASELECT_PABOOST : RF_PACONFIG_PASELECT_RFO));
-  yield();
-  LoRa.receive();
-  yield();
+  if (!LoRa.begin(LORA_BAND)) {
+    Serial.println("LR: Failed to start!");
+    while (true)
+      ;
+  }
+
+  LoRa.setTxPower(LORA_POWER, LORA_PABOOST ? PA_OUTPUT_PA_BOOST_PIN : PA_OUTPUT_RFO_PIN);
+  LoRa.setSpreadingFactor(LORA_SPREADING);
+  LoRa.setSignalBandwidth(LORA_BANDWIDTH);
+  LoRa.setSyncWord(LORA_SYNCWORD);
 }
 
 void LoRaSender::sendInt(uint16_t key, int32_t value) {
@@ -219,6 +240,11 @@ void LoRaSender::onLoRaReceive(int packetSize) {
 }
 
 void LoRaSender::loop() {
+  int packetSize = LoRa.parsePacket();
+  if (packetSize) {
+    onLoRaReceive(packetSize);
+  }
+
   if (validEncrypted) {
     // Check if we got an acknowledge already?
     uint8_t ackPackage[sizeof(Acknowledge)];
@@ -282,7 +308,7 @@ void LoRaSender::encryptPayload(Payload &sendPayload) {
   hmacSha256.update(((uint8_t *)&sendPayload) + sizeof(sendPayload.hash), currentEncryptedLength - sizeof(sendPayload.hash));
   hmacSha256.finalizeHMAC(mackey, sizeof(mackey), sendPayload.hash, sizeof(sendPayload.hash));
 
-  Serial.println("LR: == SENDING ==");
+  Serial.println("LR: Encrypted");
   printBytes((uint8_t *)&sendPayload, currentEncryptedLength);
 
   // Encrypt
@@ -299,11 +325,9 @@ void LoRaSender::transmitPayload() {
     Serial.println("LR: == SENDING ==");
     printBytes(currentEncrypted, currentEncryptedLength);
 
-    yield();
     LoRa.beginPacket();
     LoRa.write(currentEncrypted, currentEncryptedLength);
     LoRa.endPacket();
-    LoRa.receive();
     yield();
   }
 }

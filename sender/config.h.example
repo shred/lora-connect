@@ -34,8 +34,15 @@
 #define LORA_BAND xxxE6
 
 // The following constant defines the LoRa sender power and boost of the device.
-#define LORA_POWER xx
-#define LORA_PABOOST xx
+#define LORA_POWER xx      // dB
+#define LORA_PABOOST xx    // true/false
+
+// SF and bandwidth. Make sure the combination gives a payload size of 48 or higher.
+#define LORA_SPREADING 7
+#define LORA_BANDWIDTH 125E3
+
+// The sync word. Use the default if in doubt.
+#define LORA_SYNCWORD 0x12
 
 // Encryption key for LoRa transmissions
 // Must be the same key as in receiver/config.h!

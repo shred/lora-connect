@@ -15,11 +15,23 @@
  * GNU General Public License for more details.
  */
 
-#include <heltec.h>
+#include <LoRa.h>
+#include <SPI.h>
+
+#include "base64url.h"
+#include "LoRaReceiver.h"
 
 #include "config.h"
-#include "LoRaReceiver.h"
-#include "base64url.h"
+
+// pins of the Heltec LoRa32 V2 transceiver module
+#define LORA_SCK 5
+#define LORA_MISO 19
+#define LORA_MOSI 27
+#define LORA_CS 18
+#define LORA_RST 14
+#define LORA_DIO0 26
+#define LORA_DIO1 35
+#define LORA_DIO2 34
 
 static void printBytes(uint8_t *data, size_t length) {
   for (int i = 0; i < length; i++) {
@@ -73,6 +85,9 @@ static String readString(Payload &payload, uint8_t &cursor) {
 
 
 LoRaReceiver::LoRaReceiver(const char *base64key) {
+  SPI.begin(LORA_SCK, LORA_MISO, LORA_MOSI, LORA_CS);
+  LoRa.setPins(LORA_CS, LORA_RST, LORA_DIO0);
+
   uint8_t key[32];
   if (!base64UrlDecode(base64key, key, sizeof(key))) {
     Serial.println("LR: FATAL: key is invalid, check your config.h!");
@@ -102,17 +117,31 @@ LoRaReceiver::LoRaReceiver(const char *base64key) {
 }
 
 LoRaReceiver::~LoRaReceiver() {
+  LoRa.end();
   delete messageQueue;
   delete receiverQueue;
 }
 
 void LoRaReceiver::connect() {
-  LoRa.setTxPower(LORA_POWER, (LORA_PABOOST == true ? RF_PACONFIG_PASELECT_PABOOST : RF_PACONFIG_PASELECT_RFO));
-  LoRa.receive();
-  yield();
+  if (!LoRa.begin(LORA_BAND)) {
+    Serial.println("LR: Failed to start!");
+    while (true)
+      ;
+  }
+
+  LoRa.setTxPower(LORA_POWER, LORA_PABOOST ? PA_OUTPUT_PA_BOOST_PIN : PA_OUTPUT_RFO_PIN);
+  LoRa.setSpreadingFactor(LORA_SPREADING);
+  LoRa.setSignalBandwidth(LORA_BANDWIDTH);
+  LoRa.setSyncWord(LORA_SYNCWORD);
 }
 
 void LoRaReceiver::loop() {
+  int packetSize = LoRa.parsePacket();
+  if (packetSize) {
+    onLoRaReceive(packetSize);
+  }
+  yield();
+
   Encrypted receivedMessage;
   if (receiverQueue->pop(&receivedMessage)) {
     processMessage(receivedMessage);
@@ -205,11 +234,9 @@ void LoRaReceiver::processMessage(Encrypted &cryptBuffer) {
     Serial.println("LR: Message already received, maybe ACK was lost, ignoring");
   }
 
-  yield();
   LoRa.beginPacket();
   LoRa.write(ackEncrypted, sizeof(ackEncrypted));
   LoRa.endPacket();
-  LoRa.receive();
   yield();
 }
 
@@ -293,8 +320,11 @@ void LoRaReceiver::processPayload(Payload &payload) {
         Serial.printf("LR: Unknown message type %u, ignoring rest of message\n", type);
         return;
     }
-    yield();
   }
+}
+
+int LoRaReceiver::getRssi() {
+  return LoRa.rssi();
 }
 
 void LoRaReceiver::onReceiveInt(ReceiveIntEvent intEventListener) {

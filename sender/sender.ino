@@ -15,7 +15,6 @@
  * GNU General Public License for more details.
  */
 
-#include <heltec.h>
 #include <WiFi.h>
 
 #include "HCSocket.h"
@@ -131,23 +130,9 @@ void processMessage(const JsonDocument &msg) {
   }
 }
 
-void onLoRaReceive(int packetSize) {
-  lora.onLoRaReceive(packetSize);
-}
-
 void setup() {
-  Heltec.begin(
-    true,          // display is enabled
-    true,          // LoRa is enabled
-    true,          // serial is enabled
-    LORA_PABOOST,  // set LoRa paboost
-    LORA_BAND      // set LoRa band
-  );
-
   Serial.begin(115200);
   Serial.println();
-  Heltec.display->clear();
-  Heltec.display->display();
 
   randomSeed(analogRead(0));
 
@@ -158,9 +143,6 @@ void setup() {
   WiFi.onEvent(WiFiApDisconnected, WiFiEvent_t::ARDUINO_EVENT_WIFI_AP_STADISCONNECTED);
   WiFi.onEvent(WiFiApIpAssigned, WiFiEvent_t::ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED);
 
-  // TODO: I would love to have this in the connect method of the LoRaSender class,
-  // but I am too stupid to register an object based callback with LoRa.onReceive() there.
-  LoRa.onReceive(onLoRaReceive);
   lora.connect();
 
   lora.sendSystemMessage("Ready");

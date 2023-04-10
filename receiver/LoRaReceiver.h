@@ -105,13 +105,12 @@ public:
   void loop();
 
   /**
-   * This callback is invoked when LoRa receives a message. It might
-   * be called from a different thread or interrupt handler, so be
-   * careful and as fast as possible.
+   * Return the current RSSI.
    */
-  void onLoRaReceive(int packetSize);
+  int getRssi();
 
 private:
+  void onLoRaReceive(int packetSize);
   void processMessage(Encrypted &payload);
   void processPayload(Payload &payload);
 

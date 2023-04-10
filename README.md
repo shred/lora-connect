@@ -29,7 +29,7 @@ See also my [To-Do list](TODO.md).
 
 # Hardware
 
-* 2x Heltec Automation WiFi LoRa 32(V2) modules (one sender, one receiver). This project uses proprietary Heltec libraries, and is unlikely to run on other LoRa microcontrollers.
+* 2x Heltec Automation WiFi LoRa 32(V2) modules (one sender, one receiver). With modification to the source, this project might also run on other ESP32 boards with Semtech SX1276/77/78/79 LoRa transceiver.
 * A 3D printed case for the module is available at [Printables](https://www.printables.com/model/425740-heltec-lora32-minimal-case).
 
 # Firmware
@@ -48,7 +48,7 @@ You need to install these dependencies in your Arduino library (with the tested 
 * [ArduinoJson](https://arduinojson.org/) by Benoit Blanchon (6.21.0)
 * [Base64](https://github.com/Densaugeo/base64_arduino) by Densaugeo (1.3.0)
 * [Crypto](https://rweather.github.io/arduinolibs/crypto.html) by Rhys Weatherley (0.4.0)
-* [Heltec ESP32 Dev-Boards](https://github.com/HelTecAutomation/Heltec_ESP32) by Heltec Automation (1.1.1)
+* [LoRa](https://github.com/sandeepmistry/arduino-LoRa) by Sandeep Mistry (0.8.0)
 * [PubSubClient](https://github.com/knolleary/pubsubclient) by Nick O'Leary (2.8.0)
 * [Queue](https://github.com/SMFSW/Queue) by SMFSW (1.11)
 * [Web Sockets](https://github.com/Links2004/arduinoWebSockets) by Markus Sattler (2.3.6)

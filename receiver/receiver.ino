@@ -16,7 +16,6 @@
  */
 
 #include <ArduinoJson.h>
-#include <heltec.h>
 #include <PubSubClient.h>
 #include <WiFi.h>
 #include <WiFiClient.h>
@@ -110,7 +109,7 @@ void onWiFiStaDisconnected(WiFiEvent_t event, WiFiEventInfo_t info) {
 }
 
 void postToMqtt(DynamicJsonDocument &doc) {
-  doc["loraSignalStrength"] = LoRa.packetRssi();
+  doc["loraSignalStrength"] = lora.getRssi();
   doc["wifiSignalStrength"] = WiFi.RSSI();
 
   String json;
@@ -122,24 +121,9 @@ void postToMqtt(DynamicJsonDocument &doc) {
   }
 }
 
-void onLoRaReceive(int packetSize) {
-  lora.onLoRaReceive(packetSize);
-}
-
 void setup() {
-  Heltec.begin(
-    true,          // display is enabled
-    true,          // LoRa is enabled
-    true,          // serial is enabled
-    LORA_PABOOST,  // set LoRa paboost
-    LORA_BAND      // set LoRa band
-  );
-  delay(1000);
-
   Serial.begin(115200);
   Serial.println();
-  Heltec.display->clear();
-  Heltec.display->display();
 
   // Start WLAN
   WiFi.disconnect(true);
@@ -152,10 +136,6 @@ void setup() {
   lora.onReceiveBoolean(onReceiveBoolean);
   lora.onReceiveString(onReceiveString);
   lora.onReceiveSystemMessage(onReceiveSystemMessage);
-
-  // TODO: I would love to have this in the connect method of the LoRaReceiver class,
-  // but I am too stupid to register an object based callback with LoRa.onReceive() there.
-  LoRa.onReceive(onLoRaReceive);
   lora.connect();
 }
 
