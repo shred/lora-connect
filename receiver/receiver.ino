@@ -25,6 +25,8 @@
 #include "config.h"
 #include "mapping.h"
 
+#define LED_PIN 25
+
 unsigned long beforeMqttConnection = millis();
 bool connected = false;
 WiFiClient wifiClient;
@@ -124,6 +126,9 @@ void postToMqtt(DynamicJsonDocument &doc) {
 void setup() {
   Serial.begin(115200);
   Serial.println();
+
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
 
   // Start WLAN
   WiFi.disconnect(true);

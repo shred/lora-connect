@@ -22,6 +22,8 @@
 #include "base64url.h"
 #include "config.h"
 
+#define LED_PIN 25
+
 // AP connection
 bool apGate = false;
 bool deviceConnected = false;
@@ -67,6 +69,7 @@ void WiFiApIpAssigned(WiFiEvent_t event, WiFiEventInfo_t info) {
     Serial.printf("Assigned IP %s to AID %u\n", deviceIp.toString(), deviceAid);
     socket.connect(deviceIp, 80);
     lora.sendSystemMessage("Appliance IP " + deviceIp.toString());
+    digitalWrite(LED_PIN, HIGH);
   }
 }
 
@@ -76,6 +79,7 @@ void WiFiApDisconnected(WiFiEvent_t event, WiFiEventInfo_t info) {
     apGate = false;
     lora.sendSystemMessage("Appliance disconnected");
     Serial.printf("Appliance disconnected, AID %u\n", deviceAid);
+    digitalWrite(LED_PIN, LOW);
     lora.sleep();
   }
 }
@@ -133,6 +137,9 @@ void processMessage(const JsonDocument &msg) {
 void setup() {
   Serial.begin(115200);
   Serial.println();
+
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
 
   randomSeed(analogRead(0));
 
