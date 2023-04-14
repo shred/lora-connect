@@ -10,22 +10,20 @@ This project connects your _Home Connect_ device to your home automation via MQT
 
 I recently bought a clothes washer that is [Home Connect](https://www.home-connect.com) enabled. Unfortunately, the machine is in a shared laundry room in the basement, and out of reach of my WLAN. I tried to use PLC, but it killed my DSL, so I am unable to connect the machine to the Home Connect cloud.
 
-Thanks to Trammell Hudson blog article about ["hacking your dishwasher"](https://trmm.net/homeconnect/), I learned that it is possible to directly connect to the machine, without having to use the Home Connect cloud.
+Thanks to Trammell Hudson's blog article about ["hacking your dishwasher"](https://trmm.net/homeconnect/), I learned that it is possible to directly connect to the machine, without having to use the Home Connect cloud.
 
-This project consists of two ESP32 microcontrollers. One is located in the basement. It connects to the washer, and transmits the current status to my flat using LoRa. The other microcontroller is located in my flat. It receives the status messages from LoRa, converts them into JSON messages, and sends them to MQTT for further processing in my home automation.
+This project consists of two ESP32 microcontrollers. One is located at the basement. It connects to the washer, and transmits the current status to my flat using LoRa. The other microcontroller is located in my flat. It receives the status messages from LoRa, converts them into JSON messages, and sends them to MQTT for further processing in my home automation.
 
-Unfortunately (for you), I have no plans to buy more Home Connect appliances in the foreseeable future, so the project will be more or less limited to my washing machine. Also I am only interested in the current status, mainly the remaining time, so it is not possible to remote control the machine.
+Unfortunately (for you), I have no plans to buy more Home Connect appliances in the foreseeable future, so the project will be more or less limited to my washing machine. Also I am only interested in the current status, mainly the remaining time, so it is not possible to remote control the machine. (See also my [To-Do list](TODO.md).)
 
 However I hope that this project is a good starting point for your own experiments and extensions. Please feel free to fork and extend this project, to support more machine types (like dishwashers), or maybe even remote control the machines via MQTT.
-
-See also my [To-Do list](TODO.md).
 
 ## DISCLAIMER
 
 * LoRa uses specific radio frequencies for transmission. The permitted frequencies, maximum transmission power, payload sizes, duty cycles, and other parameters vary from country to country. It is **YOUR responsibility** to properly configure the project, and to ensure it fully complies with the regulations of **YOUR** country. Failure to do so may result in legal problems, claims for damages, and even imprisonment. The author of this project cannot be held liable. This software is designed for use in countries of the European Union. Use in other countries might require changes to the code.
-* The project bases on reverse engineering. There is no guarantee that it will work with your Home Connect appliance. It might also stop working some day, e.g. after a protocol change of the manufacturer.
+* The project bases on reverse engineering. There is no guarantee that it will work with your Home Connect appliance. It might also stop working some day, e.g. after a firmware update or a protocol change of the manufacturer.
 * C isn't the language that I am most proficient with. The source code is ugly, badly formatted, probably has memory leaks, and certainly has a lot of things that a good C developer would do much better. I am open for your constructive feedback. But on the other hand, it is working for me, so I'm fine with it. 😉
-* The LoRa transport is hashed and AES256 encrypted, to avoid attackers to read the packages or send fake packages. Also there are resent attempts if a package was lost. However, the encryption is not state-of-the-art, especially because of the very limited LoRa package size. It is also not proof against replay attacks. This is fine for me, but don't expect top notch encryption here!
+* The LoRa transport is hashed and AES256 encrypted, to avoid attackers to read the packages or send fake packages. Also there are resent attempts if a package was lost. However, the encryption is not state-of-the-art, especially because of the very limited LoRa package size. It is also not proof against replay attacks. This is fine for me, but don't expect top notch encryption here.
 
 # Hardware
 
@@ -37,9 +35,7 @@ See also my [To-Do list](TODO.md).
 * The sender firmware can be found in the `sender` directory.
 * The receiver firmware can be found in the `receiver` directory.
 
-Both projects need configuration files. To create them, copy the respective `config.h.example` file to `config.h`, and then manually change it to your needs.
-
-You will need to run [hcpy hcauth](https://github.com/osresearch/hcpy) first to create a `config.json` file.
+Both projects need configuration files. To create them, copy the respective `config.h.example` file to `config.h`, and then manually change it to your needs. More about the configuration will follow below.
 
 ## Dependencies
 
@@ -57,14 +53,14 @@ You need to install these dependencies in your Arduino library (with the tested 
 
 Configuring this project is not easy, and will take a considerable amount of time, investigation, and patience. However it is likely to be the most difficult part of the setup.
 
-* First, register your appliance with Home Connect. If there is no WLAN present, you can also register it using a smartphone and the Home Connect app. The appliance will then spawn an access point for registration.
-* After that, you need to create your `config.json` file. This can be done with [hcpy](https://github.com/osresearch/hcpy).
+* First, register your appliance with Home Connect. If there is no WLAN present at your appliance's location, you can also register it using a smartphone and the Home Connect app. The appliance will then spawn an access point for registration.
+* After that, use [hcpy hcauth](https://github.com/osresearch/hcpy) to create the `config.json` file.
 * In the `sender` and `receiver` directory, you will find `config.h.example` files. Make a copy of each, named `config.h`.
 * Now run the `config-converter.py` tool. It will extract the `key` and `iv` values that are required for the next step, and will also generate a `mapping.cpp` file that is needed by the receiver. Invocation is: `./config-converter.py /your/path/to/hcpy/config.json > receiver/mapping.cpp`
-* The previous step also extracts the `key` and `iv` values from the `config.json` file. You can copy the output into your `sender/config.h` file. If the `config-converter.py` complains that there is no `iv` value, I'm afraid you have bad luck. This project only supports websockets via port 80, with a special kind of encryption. If there is no `iv` value, it means that your appliance uses the wss protocol via port 443, with standard SSL. Also, this project currently only supports a single appliance. (See [TODO](TODO.md))
+* Copy the `HC_APPLIANCE_KEY` and `HC_APPLIANCE_IV` output of the previous step into your `sender/config.h` file. If the `config-converter.py` complains that there is no `iv` value, I'm afraid you're having bad luck. This project only supports websockets via port 80, with a special kind of encryption. If there is no `iv` value, it means that your appliance uses the wss protocol via port 443, with standard SSL. Also, this project currently only supports a single appliance. (See [TODO](TODO.md))
 * `config-converter.py` also generates a random encryption key for the LoRa transmission. If you haven't done so yet, copy the `LORA_ENCRYPT_KEY` line into both your `sender/config.h` and `receiver/config.h`. Make sure that both sides are using the same key.
-* The `LORA` defines in the `config.h` are depending on your country. To find the correct values, contact the dealer of your LoRa board or read the Heltec manual. Do not just use values that you have found somewhere on the internet. The `LORA` configuration of the sender and receiver must be identical.
-* The other configuration values depend on your WLAN and MQTT setup. Note that you are actually working with two different WLAN settings. On the _sender_ side, you set up a WLAN AP that your appliance will connect to. On the _receiver_ side, you set the parameters of your existing home WLAN. Both WLANs must have different SSIDs and passwords. (If your appliance is connected to your home WLAN, you actually won't need this solution, but you can just use [hcpy](https://github.com/osresearch/hcpy).)
+* The `LORA` defines in the `config.h` are depending on your country. To find the correct values, contact the dealer of your LoRa board or check the [frequency plans](https://www.thethingsnetwork.org/docs/lorawan/frequency-plans/). Do not just use values that you have found somewhere on the internet. The `LORA` configuration of the sender and receiver must be identical, otherwise a connection cannot be established.
+* The other configuration values depend on your WLAN and MQTT setup. Note that you are actually working with two different WLAN settings. On the _sender_ side, you set up a WLAN AP that your appliance will connect to. On the _receiver_ side, you set the parameters of your existing home WLAN. Both WLANs must have different SSIDs and passwords. (If your appliance is connected to your home WLAN, you actually won't need this solution anyway, but you can just use [hcpy](https://github.com/osresearch/hcpy).)
 * Check your `config.h` files again. If they are good, the configuration is finally completed. You can now build and install the sender and receiver firmwares.
 
 # MQTT Format

@@ -29,6 +29,8 @@
 // Failure to do so may result in legal problems, claims for damages, and even
 // imprisonment. It is YOUR sole responsibility to set the correct value here!
 // DO NOT just use values that you have found somewhere on the internet.
+//
+// Parameters of the sender and receiver must be identical.
 
 // This is the LoRa frequency
 #define LORA_BAND xxxE6
@@ -38,6 +40,8 @@
 #define LORA_PABOOST xx    // true/false
 
 // SF and bandwidth. Make sure the combination permits a payload size of 48 or higher.
+// The spreading factor should be as low as possible, so the permitted duty cycle
+// is not exceeded.
 #define LORA_SPREADING 7
 #define LORA_BANDWIDTH 125E3
 
@@ -86,4 +90,3 @@
 
 // Delay before reconnecting to MQTT server
 #define MQTT_RECONNECT_DELAY 1000
-

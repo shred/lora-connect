@@ -29,6 +29,9 @@
 // Failure to do so may result in legal problems, claims for damages, and even
 // imprisonment. It is YOUR sole responsibility to set the correct value here!
 // DO NOT just use values that you have found somewhere on the internet.
+//
+// Parameters of the sender and receiver must be identical.
+
 
 // This is the LoRa frequency
 #define LORA_BAND xxxE6
@@ -38,6 +41,8 @@
 #define LORA_PABOOST xx    // true/false
 
 // SF and bandwidth. Make sure the combination permits a payload size of 48 or higher.
+// The spreading factor should be as low as possible, so the permitted duty cycle
+// is not exceeded.
 #define LORA_SPREADING 7
 #define LORA_BANDWIDTH 125E3
 
@@ -50,19 +55,19 @@
 
 // Maximum number of sending attempts before a message is dropped
 // It makes sure that a message is not sent forever if the receiver is down.
-// Remember that every sending attempt is billed on your daily duty cycle.
-#define LORA_MAX_SENDING_ATTEMPTS 3
+// Remember that every sending attempt is billed on your permitted duty cycle.
+#define LORA_MAX_SENDING_ATTEMPTS 2
 
 
 //--- ACCESS POINT -----------------------------------
 //
-// The sender spawns an WLAN AP that your appliance connects to.
+// The sender spawns a WLAN AP that your appliance connects to.
 
 #define AP_SSID "MyAP"
 #define AP_PASSWORD "mySeCrEtPaSsWoRd"
 #define AP_SSID_HIDDEN false
 
-// Only use a WLAN channel that are permitted in your country!
+// Only use a WLAN channel that is permitted in your country!
 #define AP_CHANNEL 1
 
 
