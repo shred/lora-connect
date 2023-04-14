@@ -26,6 +26,7 @@ renderOpen      = false;    // Renders both parts of the opened case
 inserts         = false;    // If true, inserts are used for mounting the case screws
 oledWindow      = true;     // If true, a window for the OLED is added
 openAntenna     = true;     // If true, an opening for the WiFi/BT antenna is added
+buttons         = true;     // If true, reset and PRG buttons are inserted
 
 
 /* ======================================================================
@@ -182,7 +183,9 @@ module caseCutouts() {
     }
 
     // buttons
-    translate([-27.5, 0, 0]) buttonsCutout(10);
+    if (buttons) {
+        translate([-27.5, 0, 0]) buttonsCutout(10);
+    }
 }
 
 module case() {
@@ -202,8 +205,10 @@ module case() {
             caseCutouts();
             screwPostCutouts();
         }
-        // buttons
-        translate([-25, 0, 5]) buttons(1);
+        if (buttons) {
+            // buttons
+            translate([-25, 0, 5]) buttons(1);
+        }
     }
 }
 
