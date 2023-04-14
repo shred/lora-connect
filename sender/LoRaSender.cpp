@@ -20,8 +20,8 @@
 #include <LoRa.h>
 #include <SPI.h>
 
-#include "base64url.h"
 #include "LoRaSender.h"
+#include "Utils.h"
 
 #include "config.h"
 
@@ -64,7 +64,7 @@ LoRaSender::LoRaSender(const char *base64key) {
 
   uint8_t key[32];
   if (!base64UrlDecode(base64key, key, sizeof(key))) {
-    Serial.println("LR: FATAL: key is invalid, check your config.h!");
+    die("LR: key is invalid, check your config.h!");
   }
 
   hmacSha256.resetHMAC(key, sizeof(key));
@@ -77,11 +77,11 @@ LoRaSender::LoRaSender(const char *base64key) {
 
   aesEncrypt.clear();
   if (!aesEncrypt.setKey(enckey, aesEncrypt.keySize())) {
-    throw std::invalid_argument("Invalid key");
+    die("LR: Invalid encryption key");
   }
   aesDecrypt.clear();
   if (!aesDecrypt.setKey(enckey, aesEncrypt.keySize())) {
-    throw std::invalid_argument("Invalid key");
+    die("LR: Invalid decryption key");
   }
 
   validEncrypted = false;
@@ -97,9 +97,7 @@ LoRaSender::~LoRaSender() {
 
 void LoRaSender::connect() {
   if (!LoRa.begin(LORA_BAND)) {
-    Serial.println("LR: Failed to start!");
-    while (true)
-      ;
+    die("LR: Failed to start LoRa");
   }
 
   LoRa.setTxPower(LORA_POWER, LORA_PABOOST ? PA_OUTPUT_PA_BOOST_PIN : PA_OUTPUT_RFO_PIN);

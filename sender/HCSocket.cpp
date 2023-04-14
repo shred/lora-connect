@@ -22,9 +22,9 @@
 #include <SHA256.h>
 #include <WebSocketsClient.h>
 
-#include "base64url.h"
 #include "CBC.h"  // crypto legacy, local copy
 #include "HCSocket.h"
+#include "Utils.h"
 
 static void printBytes(uint8_t *data, size_t length) {
   for (int i = 0; i < length; i++) {
@@ -47,10 +47,10 @@ HCSocket::HCSocket(const char *base64psk, const char *base64iv, MessageEvent lis
 
   uint8_t psk[32];
   if (!base64UrlDecode(base64psk, psk, sizeof(psk))) {
-    Serial.println("HC: FATAL: psk is invalid, check your config.h!");
+    die("HC: psk is invalid, check your config.h!");
   }
   if (!base64UrlDecode(base64iv, iv, sizeof(iv))) {
-    Serial.println("HC: FATAL: iv is invalid, check your config.h!");
+    die("HC: iv is invalid, check your config.h!");
   }
 
   hmacSha256.resetHMAC(psk, sizeof(psk));
@@ -76,18 +76,18 @@ void HCSocket::reset() {
 
   aesEncrypt.clear();
   if (!aesEncrypt.setKey(enckey, aesEncrypt.keySize())) {
-    throw std::invalid_argument("Invalid key");
+    die("HC: Invalid encryption key");
   }
   if (!aesEncrypt.setIV(iv, aesEncrypt.ivSize())) {
-    throw std::invalid_argument("Invalid IV");
+    die("HC: Invalid encryption IV");
   }
 
   aesDecrypt.clear();
   if (!aesDecrypt.setKey(enckey, aesDecrypt.keySize())) {
-    throw std::invalid_argument("Invalid key");
+    die("HC: Invalid decryption key");
   }
   if (!aesDecrypt.setIV(iv, aesDecrypt.ivSize())) {
-    throw std::invalid_argument("Invalid IV");
+    die("HC: Invalid decryption IV");
   }
 }
 

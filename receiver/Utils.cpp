@@ -20,10 +20,18 @@
  * when used in multiple modules of a project.
  */
 
-#include "base64url.h"
+#include "Utils.h"
 
 #define BASE64_URL  // set base64.hpp to base64url mode
 #include <base64.hpp>
+
+
+void die(const char *message) {
+  Serial.print("FATAL: ");
+  Serial.println(message);
+  while (true)
+    ;
+}
 
 bool base64UrlDecode(const char *source, uint8_t *target, size_t targetSize) {
   if (decode_base64_length((unsigned char *)source) != targetSize) {
@@ -31,20 +39,4 @@ bool base64UrlDecode(const char *source, uint8_t *target, size_t targetSize) {
   }
   decode_base64((unsigned char *)source, target);
   return true;
-}
-
-String createRandomNonce() {
-  uint8_t tokenBin[32];
-  for (int ix = 0; ix < sizeof(tokenBin); ix++) {
-    tokenBin[ix] = random(256);
-  }
-
-  uint8_t encodedToken[48];
-  size_t len = encode_base64(tokenBin, sizeof(tokenBin), encodedToken);
-  while (len > 0 && encodedToken[len - 1] == '=') {
-    encodedToken[len - 1] = 0;
-    len--;
-  }
-
-  return String((char *)&encodedToken);
 }

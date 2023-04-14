@@ -20,11 +20,25 @@
  * when used in multiple modules of a project.
  */
 
-#ifndef __BASE64URL__
-#define __BASE64URL__
+#ifndef __LORA_UTILS__
+#define __LORA_UTILS__
 
 #include <Arduino.h>
 
+/**
+ * Log the message and then go into an endless loop.
+ */
+void die(const char *message);
+
+/**
+ * Decode a base64url encoded string. Returns false if the target does not
+ * have the right size to exactly contain the decoded source.
+ */
 bool base64UrlDecode(const char *source, uint8_t *target, size_t targetSize);
+
+/**
+ * Create a random, 32 byte wide, base64url encoded nonce.
+ */
+String createRandomNonce();
 
 #endif
