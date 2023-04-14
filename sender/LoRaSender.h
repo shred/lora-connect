@@ -26,7 +26,9 @@
 
 
 // Must be a multiple of 16. In the European Union, the maximum permitted LoRa
-// payload size is 51, so the next smaller payload size is 48.
+// payload size over all data rates is 51 bytes, so the next smaller payload
+// size is 48. LoRaSender sends the shortest possible payload with a length
+// that is divisible by 16.
 #define MAX_PAYLOAD_SIZE 48
 
 // Size of the acknowledge package, must be a multiple of 16.

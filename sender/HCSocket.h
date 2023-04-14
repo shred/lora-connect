@@ -24,6 +24,7 @@
 #include <WebSocketsClient.h>
 #include "CBC.h"  // crypto legacy, local copy
 
+
 /**
  * Socket for connecting to Home Connect appliances.
  */

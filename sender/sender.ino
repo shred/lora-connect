@@ -138,11 +138,14 @@ void setup() {
   Serial.begin(115200);
   Serial.println();
 
+  // Turn LED off
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
 
+  // Seed random generator
   randomSeed(analogRead(0));
 
+  // Start AP
   Serial.println("Starting Access Point");
   WiFi.disconnect(true);
   WiFi.softAP(AP_SSID, AP_PASSWORD, AP_CHANNEL, AP_SSID_HIDDEN);
@@ -150,8 +153,10 @@ void setup() {
   WiFi.onEvent(WiFiApDisconnected, WiFiEvent_t::ARDUINO_EVENT_WIFI_AP_STADISCONNECTED);
   WiFi.onEvent(WiFiApIpAssigned, WiFiEvent_t::ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED);
 
+  // Start LoRa
   lora.connect();
 
+  // Send startup message
   lora.sendSystemMessage("Ready");
 }
 

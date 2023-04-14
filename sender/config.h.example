@@ -37,7 +37,7 @@
 #define LORA_POWER xx      // dB
 #define LORA_PABOOST xx    // true/false
 
-// SF and bandwidth. Make sure the combination gives a payload size of 48 or higher.
+// SF and bandwidth. Make sure the combination permits a payload size of 48 or higher.
 #define LORA_SPREADING 7
 #define LORA_BANDWIDTH 125E3
 
@@ -47,6 +47,11 @@
 // Encryption key for LoRa transmissions
 // Must be the same key as in receiver/config.h!
 #define LORA_ENCRYPT_KEY "myLoRaSeCrEtKeY"
+
+// Maximum number of sending attempts before a message is dropped
+// It makes sure that a message is not sent forever if the receiver is down.
+// Remember that every sending attempt is billed on your daily duty cycle.
+#define LORA_MAX_SENDING_ATTEMPTS 3
 
 
 //--- ACCESS POINT -----------------------------------

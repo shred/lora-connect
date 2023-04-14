@@ -23,7 +23,7 @@
 
 #include "config.h"
 
-// pins of the Heltec LoRa32 V2 transceiver module
+// Pins of the Heltec LoRa32 V2 transceiver module.
 #define LORA_SCK 5
 #define LORA_MISO 19
 #define LORA_MOSI 27
@@ -33,20 +33,6 @@
 #define LORA_DIO1 35
 #define LORA_DIO2 34
 
-static void printBytes(uint8_t *data, size_t length) {
-  for (int i = 0; i < length; i++) {
-    Serial.printf("%02X", data[i]);
-  }
-  Serial.println();
-  for (int i = 0; i < length; i++) {
-    if (data[i] >= 32 && data[i] < 128) {
-      Serial.print((char)data[i]);
-    } else {
-      Serial.print('.');
-    }
-  }
-  Serial.println();
-}
 
 static uint16_t readKey(Payload &payload, uint8_t &cursor) {
   uint16_t result = 0;
@@ -83,7 +69,6 @@ static String readString(Payload &payload, uint8_t &cursor) {
   return String(start, strlen);
 }
 
-
 LoRaReceiver::LoRaReceiver(const char *base64key) {
   SPI.begin(LORA_SCK, LORA_MISO, LORA_MOSI, LORA_CS);
   LoRa.setPins(LORA_CS, LORA_RST, LORA_DIO0);
@@ -110,6 +95,7 @@ LoRaReceiver::LoRaReceiver(const char *base64key) {
     die("LR: Invalid decryption key");
   }
 
+  // TODO: Do we really need two queues here anymore? Is the Encrypted queue sufficient?
   receiverQueue = new cppQueue(sizeof(Encrypted), PAYLOAD_BUFFER_SIZE);
   messageQueue = new cppQueue(sizeof(Payload), PAYLOAD_BUFFER_SIZE);
 
@@ -155,7 +141,7 @@ void LoRaReceiver::loop() {
 
 void LoRaReceiver::onLoRaReceive(int packetSize) {
   if (packetSize == 0 || packetSize > sizeof(Payload) || packetSize % 16 != 0) {
-    Serial.printf("LRC: Unexpected message length %u, ignoring\n", packetSize);
+    Serial.printf("LRC: Ignoring message with length %u\n", packetSize);
     return;
   }
 
@@ -163,25 +149,22 @@ void LoRaReceiver::onLoRaReceive(int packetSize) {
   cryptBuffer.length = packetSize;
 
   size_t receiveLength = 0;
-  while (LoRa.available() && receiveLength < sizeof(cryptBuffer.payload)) {
-    cryptBuffer.payload[receiveLength++] = (uint8_t)LoRa.read();
-  }
-  if (receiveLength != packetSize) {
-    Serial.printf("LRC: Expected message length was %u, but is %u\n", packetSize, receiveLength);
-    return;
+  uint8_t chr;
+  while (LoRa.available()) {
+    chr = (uint8_t)LoRa.read();
+    if (receiveLength < sizeof(cryptBuffer.payload)) {
+      cryptBuffer.payload[receiveLength++] = chr;
+    }
   }
 
   if (receiverQueue->push(&cryptBuffer)) {
-    Serial.printf("LRC: Received message, length %u\n", packetSize);
+    Serial.printf("LRC: Received message with length %u\n", packetSize);
   } else {
-    Serial.println("LRC: Queue is full, payload dropped!");
+    Serial.println("LRC: Queue is full, message was dropped!");
   }
 }
 
 void LoRaReceiver::processMessage(Encrypted &cryptBuffer) {
-  Serial.println("LR: == RECEIVED ==");
-  printBytes(cryptBuffer.payload, cryptBuffer.length);
-
   // Decrypt
   Payload payload;
   uint8_t *clearBuffer = (uint8_t *)&payload;
@@ -190,48 +173,52 @@ void LoRaReceiver::processMessage(Encrypted &cryptBuffer) {
     aesDecrypt.decryptBlock(clearBuffer + ix, cryptBuffer.payload + ix);
   }
 
-  Serial.println("LR: Decrypted");
-  printBytes(clearBuffer, sizeof(payload));
-
+  // Compare hashes
   uint8_t ourHash[sizeof(payload.hash)];
   hmacSha256.resetHMAC(mackey, sizeof(mackey));
   hmacSha256.update(((uint8_t *)&payload) + sizeof(payload.hash), cryptBuffer.length - sizeof(payload.hash));
   hmacSha256.finalizeHMAC(mackey, sizeof(mackey), ourHash, sizeof(ourHash));
 
   if (0 != memcmp(payload.hash, ourHash, sizeof(ourHash))) {
-    Serial.println("LR: Bad HMAC, maybe not our package");
+    Serial.println("LR: Bad HMAC");
     return;
   }
 
-  // Send Acknowledge
+  // Send acknowledge
+  sendAck(payload.number);
+
+  // Check for duplicate
+  if (payload.number == lastMessageNumber) {
+    Serial.println("LR: Message already received");
+    return;
+  }
+  lastMessageNumber = payload.number;
+
+  // Process message
+  if (!messageQueue->push(&payload)) {
+    Serial.println("LR: Payload queue is full, message was dropped!");
+  }
+}
+
+void LoRaReceiver::sendAck(uint16_t messageId) {
   Acknowledge acknowledge;
-  acknowledge.number = payload.number;
+  acknowledge.number = messageId;
+
+  // Fill padding with random bytes
   for (int ix = 0; ix < sizeof(acknowledge.pad); ix++) {
     acknowledge.pad[ix] = random(256);
   }
 
+  // Calculate hash
   hmacSha256.resetHMAC(mackey, sizeof(mackey));
   hmacSha256.update(((uint8_t *)&acknowledge) + sizeof(acknowledge.hash), sizeof(acknowledge) - sizeof(acknowledge.hash));
   hmacSha256.finalizeHMAC(mackey, sizeof(mackey), acknowledge.hash, sizeof(acknowledge.hash));
 
-  Serial.println("LR: Ack unencrypted");
-  printBytes((uint8_t *)&acknowledge, sizeof(acknowledge));
-
+  // Encrypt
   uint8_t ackEncrypted[sizeof(acknowledge)];
   aesEncrypt.encryptBlock(ackEncrypted, (uint8_t *)&acknowledge);
 
-  Serial.println("LR: Ack encrypted");
-  printBytes((uint8_t *)&ackEncrypted, sizeof(acknowledge));
-
-  if (payload.number != lastMessageNumber) {
-    lastMessageNumber = payload.number;
-    if (!messageQueue->push(&payload)) {
-      Serial.println("LR: Payload queue is full, payload dropped!");
-    }
-  } else {
-    Serial.println("LR: Message already received, maybe ACK was lost, ignoring");
-  }
-
+  // Send
   LoRa.beginPacket();
   LoRa.write(ackEncrypted, sizeof(ackEncrypted));
   LoRa.endPacket();
