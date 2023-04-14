@@ -19,6 +19,7 @@
 #include <PubSubClient.h>
 #include <WiFi.h>
 #include <WiFiClient.h>
+#include <cppQueue.h>
 
 #include "LoRaReceiver.h"
 
@@ -27,11 +28,15 @@
 
 #define LED_PIN 25
 
+#define JSONQUEUE_SIZE 64
+#define JSONQUEUE_MESSAGE_SIZE 512
+
 unsigned long beforeMqttConnection = millis();
 bool connected = false;
 WiFiClient wifiClient;
 LoRaReceiver lora(LORA_ENCRYPT_KEY);
 PubSubClient client(MQTT_SERVER_HOST, MQTT_SERVER_PORT, wifiClient);
+cppQueue jsonQueue(JSONQUEUE_MESSAGE_SIZE, JSONQUEUE_SIZE, FIFO, true);
 
 
 void onReceiveInt(uint16_t key, int32_t value) {
@@ -110,12 +115,23 @@ void postToMqtt(DynamicJsonDocument &doc) {
   doc["loraSignalStrength"] = lora.getRssi();
   doc["wifiSignalStrength"] = WiFi.RSSI();
 
-  String json;
-  serializeJson(doc, json);
-  Serial.printf("MQ: Sending %s\n", json.c_str());
-  if (!client.publish(MQTT_TOPIC, json.c_str(), MQTT_RETAIN)) {
-    Serial.printf("MQ: Sending failed, rc=%d\n", client.state());
+  char json[JSONQUEUE_MESSAGE_SIZE];
+  if (serializeJson(doc, json, JSONQUEUE_MESSAGE_SIZE) >= JSONQUEUE_MESSAGE_SIZE - 1) {
+    Serial.println("MQ: JSON message exceeded buffer and was dropped!");
+    return;
   }
+  if (!jsonQueue.push(json)) {
+    Serial.println("MQ: JSON queue is full, message was dropped!");
+  }
+}
+
+bool sendMqttMessage(char *message) {
+  Serial.printf("MQ: Sending %s\n", message);
+  if (!client.publish(MQTT_TOPIC, message, MQTT_RETAIN)) {
+    Serial.printf("MQ: Sending failed, rc=%d\n", client.state());
+    return false;
+  }
+  return true;
 }
 
 void setup() {
@@ -151,6 +167,15 @@ void loop() {
         Serial.println("MQ: Connected to MQTT server");
       } else {
         Serial.printf("MQ: Failed to connect to MQTT server, rc=%d\n", client.state());
+      }
+    }
+  }
+
+  if (client.connected()) {
+    char message[JSONQUEUE_MESSAGE_SIZE];
+    if (jsonQueue.peek(&message)) {
+      if (sendMqttMessage(message)) {
+        jsonQueue.drop();
       }
     }
   }
