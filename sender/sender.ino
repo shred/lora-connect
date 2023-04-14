@@ -106,7 +106,9 @@ void processMessage(const JsonDocument &msg) {
         Serial.printf("Don't know how to send uid %u\n", uid);
       }
     }
+#ifndef LORA_COLLECT_TIME
     lora.flush();
+#endif
   } else if (msg["action"] == "POST" && msg["resource"] == "/ei/initialValues") {
     socket.startSession(msg["sID"], msg["data"][0]["edMsgID"]);
 

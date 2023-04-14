@@ -58,6 +58,11 @@
 // Remember that every sending attempt is billed on your permitted duty cycle.
 #define LORA_MAX_SENDING_ATTEMPTS 2
 
+// To reduce the duty cycle, payload messages are collected until the most
+// recent one is older than the collect time. Then the collected messages
+// are sent in a single package. Remove this define to send messages immediately.
+#define LORA_COLLECT_TIME 1500
+
 
 //--- ACCESS POINT -----------------------------------
 //

@@ -45,6 +45,7 @@ LoRaSender::LoRaSender(const char *base64key) {
   LoRa.setPins(LORA_CS, LORA_RST, LORA_DIO0);
 
   lastSendTime = millis();
+  lastPushTime = millis();
   nextSendDelay = 0;
 
   uint8_t key[32];
@@ -176,6 +177,8 @@ void LoRaSender::sendMessage(uint8_t type, uint16_t key, uint8_t *msg, size_t le
     memcpy(payloadBuffer.data + payloadBuffer.length, msg, length);
     payloadBuffer.length += length;
   }
+
+  lastPushTime = millis();
 }
 
 void LoRaSender::flush() {
@@ -183,6 +186,7 @@ void LoRaSender::flush() {
     sendRaw(payloadBuffer);
     payloadBuffer.number++;
     payloadBuffer.length = 0;
+    lastPushTime = millis();
   }
 }
 
@@ -237,6 +241,13 @@ void LoRaSender::loop() {
     }
   }
   yield();
+
+#ifdef LORA_COLLECT_TIME
+  if (!validEncrypted && payloadBuffer.length != 0 && (millis() - lastPushTime) > LORA_COLLECT_TIME) {
+    flush();
+  }
+  yield();
+#endif
 
   if (validEncrypted) {
     if ((millis() - lastSendTime) > nextSendDelay) {
