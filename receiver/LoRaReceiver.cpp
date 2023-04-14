@@ -95,16 +95,13 @@ LoRaReceiver::LoRaReceiver(const char *base64key) {
     die("LR: Invalid decryption key");
   }
 
-  // TODO: Do we really need two queues here anymore? Is the Encrypted queue sufficient?
   receiverQueue = new cppQueue(sizeof(Encrypted), PAYLOAD_BUFFER_SIZE);
-  messageQueue = new cppQueue(sizeof(Payload), PAYLOAD_BUFFER_SIZE);
 
   lastMessageNumber = 0;
 }
 
 LoRaReceiver::~LoRaReceiver() {
   LoRa.end();
-  delete messageQueue;
   delete receiverQueue;
 }
 
@@ -128,13 +125,10 @@ void LoRaReceiver::loop() {
 
   Encrypted receivedMessage;
   if (receiverQueue->pop(&receivedMessage)) {
-    processMessage(receivedMessage);
-  }
-  yield();
-
-  Payload receivedPayload;
-  if (messageQueue->pop(&receivedPayload)) {
-    processPayload(receivedPayload);
+    Payload receivedPayload;
+    if (decryptMessage(receivedMessage, receivedPayload)) {
+      processPayload(receivedPayload);
+    }
   }
   yield();
 }
@@ -164,24 +158,23 @@ void LoRaReceiver::onLoRaReceive(int packetSize) {
   }
 }
 
-void LoRaReceiver::processMessage(Encrypted &cryptBuffer) {
+bool LoRaReceiver::decryptMessage(Encrypted &encrypted, Payload &payload) {
   // Decrypt
-  Payload payload;
   uint8_t *clearBuffer = (uint8_t *)&payload;
   size_t blockSize = aesEncrypt.blockSize();
-  for (int ix = 0; ix < cryptBuffer.length; ix += blockSize) {
-    aesDecrypt.decryptBlock(clearBuffer + ix, cryptBuffer.payload + ix);
+  for (int ix = 0; ix < encrypted.length; ix += blockSize) {
+    aesDecrypt.decryptBlock(clearBuffer + ix, encrypted.payload + ix);
   }
 
   // Compare hashes
   uint8_t ourHash[sizeof(payload.hash)];
   hmacSha256.resetHMAC(mackey, sizeof(mackey));
-  hmacSha256.update(((uint8_t *)&payload) + sizeof(payload.hash), cryptBuffer.length - sizeof(payload.hash));
+  hmacSha256.update(((uint8_t *)&payload) + sizeof(payload.hash), encrypted.length - sizeof(payload.hash));
   hmacSha256.finalizeHMAC(mackey, sizeof(mackey), ourHash, sizeof(ourHash));
 
   if (0 != memcmp(payload.hash, ourHash, sizeof(ourHash))) {
     Serial.println("LR: Bad HMAC");
-    return;
+    return false;
   }
 
   // Send acknowledge
@@ -190,14 +183,11 @@ void LoRaReceiver::processMessage(Encrypted &cryptBuffer) {
   // Check for duplicate
   if (payload.number == lastMessageNumber) {
     Serial.println("LR: Message already received");
-    return;
+    return false;
   }
   lastMessageNumber = payload.number;
 
-  // Process message
-  if (!messageQueue->push(&payload)) {
-    Serial.println("LR: Payload queue is full, message was dropped!");
-  }
+  return true;
 }
 
 void LoRaReceiver::sendAck(uint16_t messageId) {

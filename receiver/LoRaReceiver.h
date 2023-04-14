@@ -115,7 +115,7 @@ public:
 
 private:
   void onLoRaReceive(int packetSize);
-  void processMessage(Encrypted &payload);
+  bool decryptMessage(Encrypted &encrypted, Payload &payload);
   void processPayload(Payload &payload);
   void sendAck(uint16_t messageId);
 
@@ -133,7 +133,6 @@ private:
   ReceiveSystemMessageEvent systemMessageEventListener;
 
   cppQueue *receiverQueue;
-  cppQueue *messageQueue;
 };
 
 #endif
