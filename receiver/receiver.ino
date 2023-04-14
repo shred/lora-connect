@@ -142,6 +142,9 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
 
+  // Seed random generator
+  randomSeed(analogRead(0));
+
   // Start WLAN
   WiFi.disconnect(true);
   WiFi.mode(WIFI_STA);
