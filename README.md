@@ -91,8 +91,8 @@ This project is open source!
 
 ## Contribution
 
-* Fork the [Source code at GitHub](https://github.com/shred/lora-connect). Feel free to send pull requests.
-* Found a bug? [File a bug report!](https://github.com/shred/lora-connect/issues)
+* Fork the [Source code at Codeberg](https://codeberg.org/shred/lora-connect). Feel free to send pull requests.
+* Found a bug? [File a bug report!](https://codeberg.org/shred/lora-connect/issues)
 
 ## License
 

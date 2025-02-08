@@ -3,7 +3,7 @@
 # LoRa-Connect
 #
 # Copyright (C) 2023 Richard "Shred" Körber
-#   https://github.com/shred/lora-connect
+#   https://codeberg.org/shred/lora-connect
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
